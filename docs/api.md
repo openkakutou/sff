@@ -30,7 +30,7 @@ Most consumers only need these two functions.
 | `EncodePCX(img *PCXImage) ([]byte, error)` | Encodes pixel data back to PCX. |
 | `ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error)` | Decodes sprite `i`'s pixels, following v1's sprite-linking rule (a zero-length sprite inherits the immediately preceding sprite's pixel data). |
 | `DecodeV2Sprite(format, width, height, colorDepth int, data []byte) (*V2Image, error)` | Decodes a v2 sprite's pixel data — raw, RLE8, LZ5, or PNG8/24/32, depending on `format`. |
-| `EncodeV2Sprite(format int, img *V2Image) ([]byte, error)` | Encodes pixel data back to v2's raw or PNG formats (RLE8/LZ5 encode not yet implemented). |
+| `EncodeV2Sprite(format int, img *V2Image) ([]byte, error)` | Encodes pixel data back to v2's raw, RLE8, LZ5, or PNG8/24/32 formats (RLE5 encode not yet implemented — no real fixture has ever been found for it). |
 
 ## Palette resolution
 
