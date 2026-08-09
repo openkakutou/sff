@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 depends_on: [001]
 ---
 # Implement V2 Sprite Pixel Encode (RLE8, LZ5)
