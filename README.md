@@ -10,10 +10,7 @@ A read/write Go library for MUGEN/Ikemen GO sprite sheet (`.sff`) files — v1 a
 - One-call resolution of a sprite's final on-screen pixels directly from a `.sff` file, by group/image reference
 - Decoding/encoding of individual pixel formats used inside `.sff` files (PCX for v1, raw/RLE8/LZ5/PNG for v2)
 - Validated against real, unmodified MUGEN/Ikemen GO community character files, not just hand-built test data
-
-Planned:
-
-- A WebAssembly build so web apps can decode sprites without a Go toolchain
+- A WebAssembly build so web apps can load and decode sprites without a Go toolchain
 <!-- vibe:end:features -->
 
 <!-- vibe:begin:install -->
@@ -67,10 +64,38 @@ func main() {
 ```
 
 Lower-level entry points are also available for callers that need more control: `Load` (all sprite groups in a file, version-agnostic), `ParseV1`/`ParseV2` plus their pixel/palette decoders, and `SerializeV1`/`SerializeV2` for writing files back out.
+
+### Decoding sprites in a web browser (WebAssembly)
+
+A web app with no Go toolchain of its own can decode sprites too, using a pre-built WebAssembly module downloaded from a tagged release's assets (`sff.wasm` + `wasm_exec.js`):
+
+```html
+<script src="wasm_exec.js"></script>
+<script>
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("sff.wasm"), go.importObject)
+    .then((result) => go.run(result.instance))
+    .then(async () => {
+      const sffBytes = new Uint8Array(await fetch("character.sff").then((r) => r.arrayBuffer()));
+
+      const results = globalThis.OpenKakutouSff.resolveSprites(sffBytes, [[0, 0]], null);
+      if (results[0].error) {
+        throw new Error(results[0].error);
+      }
+
+      const { pixels, width, height } = results[0];
+      const imageData = new ImageData(new Uint8ClampedArray(pixels.buffer), width, height);
+      canvasContext.putImageData(imageData, 0, 0);
+    });
+</script>
+```
+
+See [docs/wasm.md](docs/wasm.md) for the full JS API contract and how to build the module locally.
 <!-- vibe:end:usage -->
 
 <!-- vibe:begin:docs-index -->
 - [docs/api.md](docs/api.md) — public functions and types, organized by parsing, pixel decoding/encoding, palette resolution, and file writing
-- [docs/architecture.md](docs/architecture.md) — how the read path, write path, and shared data model fit together internally
+- [docs/architecture.md](docs/architecture.md) — how the read path, write path, shared data model, and WASM entrypoint fit together internally
 - [docs/testing.md](docs/testing.md) — test strategy, how to run the suite, and how the real-file fixture corpus works
+- [docs/wasm.md](docs/wasm.md) — the WebAssembly entrypoint's JS API, how to build it locally, and the release pipeline that publishes it
 <!-- vibe:end:docs-index -->

@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build WASM module
+        run: GOOS=js GOARCH=wasm go build -o sff.wasm ./cmd/wasm
+
+      - name: Copy wasm_exec.js glue
+        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm_exec.js
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Gate publishing on a real smoke test of the exact just-built
+      # sff.wasm bytes, not just a successful native build/test/vet — a
+      # broken WASM artifact (e.g. a panic-recovery regression at the JS
+      # boundary, or a wasm_exec.js/Go-version mismatch) must never reach
+      # a published release. See
+      # .vibe/decisions/003-wasm-entrypoint-api-shape-and-release-smoke-gate.md.
+      - name: Smoke test the WASM build
+        run: node cmd/wasm/smoke.mjs sff.wasm
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            sff.wasm
+            wasm_exec.js
+          fail_on_unmatched_files: true

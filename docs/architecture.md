@@ -24,6 +24,9 @@ flowchart TB
     subgraph Shared data model
         SPR["sprite.go — Sprite / SpriteGroup"]
     end
+    subgraph WASM entrypoint
+        WASM["cmd/wasm/main.go — OpenKakutouSff.load / .resolveSprites"]
+    end
 
     V1P --> LOAD
     V2P --> LOAD
@@ -34,6 +37,8 @@ flowchart TB
     PCXD --> COMBO
     V2D --> COMBO
     PAL --> COMBO
+    LOAD --> WASM
+    COMBO --> WASM
 ```
 
 ## Read path
@@ -56,6 +61,10 @@ Round trips are semantic (serialize → re-parse → re-decode → compare), not
 
 `sprite.go` defines `Sprite`/`SpriteGroup`, the version-agnostic read-path shape `Load` populates — the vocabulary a consumer (`character`, `stage`, a lifebar app) actually wants to work with, rather than either version's raw on-disk table shape.
 
+## WASM entrypoint
+
+- **`cmd/wasm/main.go`** — a build-tag-gated (`//go:build js && wasm`) WebAssembly entrypoint, invisible to a normal host `go build ./...`/`go test ./...`. It is thin `syscall/js` glue exposing `Load` and `ResolveSpritePixels` to a browser (or any JS host) as two global functions (`OpenKakutouSff.load`, `OpenKakutouSff.resolveSprites`) — no logic of its own beyond argument conversion and marshaling results to JS. Verified by a Node.js smoke harness (`cmd/wasm/smoke.mjs`) rather than `go test`, since `syscall/js` code cannot run under the plain Go toolchain. See [docs/wasm.md](wasm.md) for the full JS API and the release pipeline that publishes it.
+
 ## No dependency on `character`
 
-This package was migrated from `character`'s internal `sff/` package unchanged in scope, with every import already stdlib-only — the migration required no code changes beyond the module path itself.
+This package was migrated from `character`'s internal `sff/` package unchanged in scope, with every import already stdlib-only — the migration required no code changes beyond the module path itself. Its own WASM entrypoint mirrors the shape `character`'s already-shipped `cmd/wasm` established (see `.vibe/decisions/003-wasm-entrypoint-api-shape-and-release-smoke-gate.md`), but is built and released independently — `stage` and lifebar apps consume this repo's WASM build directly, not through `character`'s.
