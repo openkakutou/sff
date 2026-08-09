@@ -96,12 +96,9 @@ func TestEncodeV2Sprite_SinglePixelRawSprite_RoundTrips(t *testing.T) {
 func TestEncodeV2Sprite_ReturnsErrorOnUnsupportedFormat(t *testing.T) {
 	img := &V2Image{Width: 2, Height: 2, BytesPerPixel: 1, Pixels: []byte{1, 2, 3, 4}}
 
-	// RLE5 is a real .sff v2 format code but stays deliberately unimplemented
-	// on both the decode and encode side — see
-	// .vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md.
-	_, err := EncodeV2Sprite(V2FormatRLE5, img)
+	_, err := EncodeV2Sprite(99, img)
 	if err == nil {
-		t.Fatal("expected an error for the unsupported RLE5 format, got nil")
+		t.Fatal("expected an error for an unrecognized format code, got nil")
 	}
 }
 
@@ -331,6 +328,111 @@ func TestEncodeV2Sprite_LZ5Format_ReturnsErrorOnPixelValueOutOfRange(t *testing.
 	_, err := EncodeV2Sprite(V2FormatLZ5, img)
 	if err == nil {
 		t.Fatal("expected an error for a pixel value outside LZ5's 5-bit index range, got nil")
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_RoundTripsThroughDecodeV2Sprite(t *testing.T) {
+	// A mix of: a run of the transparent index (0), a run of a non-zero
+	// index, and a couple of single, non-repeating values — every value
+	// within RLE5's 5-bit range (0-31).
+	pixels := make([]byte, 0, 20)
+	for i := 0; i < 6; i++ {
+		pixels = append(pixels, 0)
+	}
+	for i := 0; i < 9; i++ {
+		pixels = append(pixels, 12)
+	}
+	pixels = append(pixels, 31, 5, 0)
+	img := &V2Image{Width: len(pixels), Height: 1, BytesPerPixel: 1, Pixels: pixels}
+
+	data, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err != nil {
+		t.Fatalf("EncodeV2Sprite returned error: %v", err)
+	}
+
+	got, err := DecodeV2Sprite(V2FormatRLE5, img.Width, img.Height, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite on encoded RLE5 data: %v", err)
+	}
+	if !bytesEqual(got.Pixels, img.Pixels) {
+		t.Errorf("expected pixels %v, got %v", img.Pixels, got.Pixels)
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_SinglePixelRoundTrips(t *testing.T) {
+	img := &V2Image{Width: 1, Height: 1, BytesPerPixel: 1, Pixels: []byte{17}}
+
+	data, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err != nil {
+		t.Fatalf("EncodeV2Sprite returned error: %v", err)
+	}
+
+	got, err := DecodeV2Sprite(V2FormatRLE5, img.Width, img.Height, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite on encoded RLE5 data: %v", err)
+	}
+	if !bytesEqual(got.Pixels, img.Pixels) {
+		t.Errorf("expected pixels %v, got %v", img.Pixels, got.Pixels)
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_ZeroValueRunEncodesWithoutIndexByte(t *testing.T) {
+	// A run of the transparent index (0) is encoded as a 2-byte block
+	// (count-1, 0x00) — decodeV2RLE5 doesn't need a third byte for it,
+	// unlike a non-zero-value run (3 bytes: count-1, 0x80, value).
+	img := &V2Image{Width: 3, Height: 1, BytesPerPixel: 1, Pixels: []byte{0, 0, 0}}
+
+	data, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err != nil {
+		t.Fatalf("EncodeV2Sprite returned error: %v", err)
+	}
+	want := withV2LengthPrefix(3, []byte{0x02, 0x00})
+	if !bytesEqual(data, want) {
+		t.Errorf("got encoded data %v, want %v", data, want)
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_SplitsRunsLongerThanBlockLimit(t *testing.T) {
+	// A single run's repeat count is capped at rle5MaxRun (256, an 8-bit
+	// field's max value + 1) per block; a longer run must split across
+	// multiple blocks. 300 repeats of the same value exercises that split.
+	pixels := make([]byte, 300)
+	for i := range pixels {
+		pixels[i] = 9
+	}
+	img := &V2Image{Width: len(pixels), Height: 1, BytesPerPixel: 1, Pixels: pixels}
+
+	data, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err != nil {
+		t.Fatalf("EncodeV2Sprite returned error: %v", err)
+	}
+
+	got, err := DecodeV2Sprite(V2FormatRLE5, img.Width, img.Height, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite on encoded RLE5 data: %v", err)
+	}
+	if !bytesEqual(got.Pixels, img.Pixels) {
+		t.Errorf("expected pixels %v, got %v", img.Pixels, got.Pixels)
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_ReturnsErrorOnBytesPerPixelMismatch(t *testing.T) {
+	img := &V2Image{Width: 2, Height: 1, BytesPerPixel: 3, Pixels: []byte{1, 2, 3, 4, 5, 6}}
+
+	_, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err == nil {
+		t.Fatal("expected an error for a BytesPerPixel mismatch, got nil")
+	}
+}
+
+func TestEncodeV2Sprite_RLE5Format_ReturnsErrorOnPixelValueOutOfRange(t *testing.T) {
+	// RLE5 encodes palette indices in 5 bits (0-31); a value of 32 or above
+	// cannot be represented by this format.
+	img := &V2Image{Width: 2, Height: 1, BytesPerPixel: 1, Pixels: []byte{10, 32}}
+
+	_, err := EncodeV2Sprite(V2FormatRLE5, img)
+	if err == nil {
+		t.Fatal("expected an error for a pixel value outside RLE5's 5-bit index range, got nil")
 	}
 }
 

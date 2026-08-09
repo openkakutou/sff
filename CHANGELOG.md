@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Sprites using the v2 RLE5 pixel compression format can now be loaded and saved, ported directly from Ikemen GO's own reference decoder. Unlike every other supported format, RLE5 has not been validated against a real character file — none using it is known to exist yet — so this support should be treated as unproven until one turns up.
+
 ## [0.1.0] - 2026-08-09
 
 ### Added

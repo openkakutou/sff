@@ -12,4 +12,17 @@ Extend the real-file compatibility testing practice `character` already establis
 - [ ] Any real-file parse failures are triaged and either fixed or explicitly documented as known gaps, not silently ignored
 
 ## Notes
-Mirrors `character`'s `.vibe/fixture-sources.md` practice — read that file for the exact convention to replicate.
+Mirrors `character`'s `.vibe/fixture-sources.md` practice, now migrated to
+this repo's own `.vibe/fixture-sources.md` — read that file for the exact
+convention to replicate.
+
+That file's "`stand*.gif` — ground-truth palette-resolved renders" section
+describes a concrete, independent-of-`sff-extractor` validation scenario
+worth covering here: real characters' `standN.gif` preview animations are
+ground-truth renders of a specific sprite decoded with a specific external
+`.act` palette (`palN`) applied, produced by a tool outside this repo's own
+reference chain. Comparing `ResolveSpritePixels` output against a
+GIF-decoded frame (for a character with a full numbered `standN.gif` set,
+trimmed into `testdata/`) would be a stronger end-to-end check than the
+existing `sprites/*.png` fixtures, which share a reference project with the
+decoders being validated.

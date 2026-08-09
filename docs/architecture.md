@@ -53,7 +53,7 @@ flowchart TB
 ## Write path
 
 - **`v1_serializer.go` / `v2_serializer.go`** — write a full `.sff` file (either version) from write-only input types (`V1WriteSprite`, `V2WriteSprite`/`V2WritePalette`) that carry real bytes to embed, not decoded pixel data.
-- **`pcx_encoder.go` / `v2_encoder.go`** — encode pixel data back into the v1 PCX format or v2's raw, RLE8, LZ5, and PNG formats (RLE5 encode is not yet implemented — decode-only for that one, since no real fixture using it has ever been found; see `.vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md`).
+- **`pcx_encoder.go` / `v2_encoder.go`** — encode pixel data back into the v1 PCX format or v2's raw, RLE8, RLE5, LZ5, and PNG formats. RLE5 (both decode and encode) is the one format never validated against a real file — a real fixture has never been found, but it was implemented anyway by porting Ikemen-GO's reference algorithm directly; see `.vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md` and `.vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md`.
 
 Round trips are semantic (serialize → re-parse → re-decode → compare), not byte-exact: `.sff` is a binary format with no diff-friendliness benefit to preserving an original file's exact layout.
 

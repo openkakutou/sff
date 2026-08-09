@@ -36,18 +36,20 @@ type V2Image struct {
 // declared dimensions and color depth, since not every encoding
 // self-describes them the way PCX/PNG headers do.
 //
-// Only V2FormatRaw (uncompressed indexed data), V2FormatRLE8, V2FormatLZ5,
-// and the PNG formats (V2FormatPNG8/24/32, decoded via the standard
-// library) are supported. Any other format code — including the real but
-// unimplemented compressed format V2FormatRLE5 — returns a descriptive
-// error rather than panicking or silently misinterpreting the data; see
-// .vibe/decisions/006-sff-v2-pixel-decode-shape-and-scope.md.
+// Only V2FormatRaw (uncompressed indexed data), V2FormatRLE8, V2FormatRLE5,
+// V2FormatLZ5, and the PNG formats (V2FormatPNG8/24/32, decoded via the
+// standard library) are supported. Any other format code returns a
+// descriptive error rather than panicking or silently misinterpreting the
+// data; see .vibe/decisions/006-sff-v2-pixel-decode-shape-and-scope.md and,
+// for V2FormatRLE5 specifically, .vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md.
 func DecodeV2Sprite(format, width, height, colorDepth int, data []byte) (*V2Image, error) {
 	switch format {
 	case V2FormatRaw:
 		return decodeV2Raw(width, height, colorDepth, data)
 	case V2FormatRLE8:
 		return decodeV2RLE8(width, height, colorDepth, data)
+	case V2FormatRLE5:
+		return decodeV2RLE5(width, height, colorDepth, data)
 	case V2FormatLZ5:
 		return decodeV2LZ5(width, height, colorDepth, data)
 	case V2FormatPNG8, V2FormatPNG24, V2FormatPNG32:
@@ -133,6 +135,125 @@ func decodeV2RLE8(width, height, colorDepth int, data []byte) (*V2Image, error) 
 		for k := 0; k < run; k++ {
 			pixels[pos] = b
 			pos++
+		}
+	}
+
+	return &V2Image{Width: width, Height: height, BytesPerPixel: 1, Pixels: pixels}, nil
+}
+
+// decodeV2RLE5 decodes V2FormatRLE5 pixel data: a run-length-compressed
+// stream of palette-index bytes organized into "blocks", ported from
+// Ikemen-GO's Rle5Decode (src/image.go) — the authoritative reference
+// character's own backlog (item 030, never migrated into this repo) had
+// already identified for this format, since sff-extractor (the reference
+// project every other format in this package is cross-checked against) has
+// no RLE5 support at all. Unlike every other format this package decodes,
+// this port has never been validated against a real on-disk file: a scan
+// of a ~562-file real-character corpus found zero sprites using format
+// code 3 (see
+// .vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md
+// for the deliberate decision to implement it anyway, hand-traced against
+// the reference algorithm and validated only by round-tripping through
+// encodeV2RLE5). If a real RLE5-encoded file ever turns up, it belongs as
+// a new testdata fixture validating this decoder for real.
+//
+// Like decodeV2RLE8/decodeV2LZ5, it starts with a 4-byte little-endian
+// declared decompressed length, skipped without validation (decodeV2RLE8's
+// doc comment explains why), followed by the actual compressed stream.
+//
+// The stream is a sequence of blocks, each describing one or more
+// same-value pixel runs:
+//   - byte 1 ("rl"): the block's first run's repeat count, minus 1 (0-255,
+//     so 1-256 repeats)
+//   - byte 2 ("dl"): its low 7 bits count how many more runs follow this
+//     block's first one; its top bit, if set, means a third byte supplies
+//     the first run's palette index — if clear, the first run's index is 0
+//     (the common case: most runs in a real sprite would be the
+//     transparent index)
+//   - byte 3 (only present when byte 2's top bit is set): the first run's
+//     palette index, used exactly as read — unlike every subsequent run's
+//     own index byte in this same block, it is not masked to 5 bits,
+//     matching the reference exactly (an asymmetry in the original
+//     algorithm, not a choice made here)
+//   - each of the following (byte 2 & 0x7f) runs is one more byte: its top
+//     3 bits (value+1) are the repeat count, its bottom 5 bits the
+//     palette index
+//
+// Unlike the reference, which tolerates running out of input by clamping
+// its read cursor to the last valid byte and stops writing once the
+// output buffer is full without reporting it, this port treats both as a
+// descriptive error instead — matching decodeV2RLE8/decodeV2LZ5's own
+// error-handling contract for the same "malformed compressed data" class
+// of problem; see .vibe/decisions/009-v2-lz5-decode-error-handling-diverges-from-reference.md.
+//
+// Like decodeV2LZ5, colorDepth is not validated: real RLE5 sprites, like
+// real LZ5 ones, are expected to declare ColorDepth 5, not 8.
+func decodeV2RLE5(width, height, colorDepth int, data []byte) (*V2Image, error) {
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("sff: v2 sprite: invalid dimensions %dx%d for RLE5 format", width, height)
+	}
+	if len(data) < 4 {
+		return nil, fmt.Errorf("sff: v2 sprite: RLE5 pixel data too short (%d bytes, need at least 4 for the length prefix)", len(data))
+	}
+
+	want := width * height
+	stream := data[4:]
+	pixels := make([]byte, want)
+
+	pos := 0
+	next := func() (byte, error) {
+		if pos >= len(stream) {
+			return 0, fmt.Errorf("sff: v2 sprite: RLE5 data ends before filling declared %dx%d size", width, height)
+		}
+		b := stream[pos]
+		pos++
+		return b, nil
+	}
+
+	writeRun := func(j, run int, index byte) (int, error) {
+		if j+run > want {
+			return j, fmt.Errorf("sff: v2 sprite: RLE5 run of %d pixels at position %d overruns declared %dx%d image size", run, j, width, height)
+		}
+		for k := 0; k < run; k++ {
+			pixels[j] = index
+			j++
+		}
+		return j, nil
+	}
+
+	j := 0
+	for j < want {
+		rl, err := next()
+		if err != nil {
+			return nil, err
+		}
+		dl, err := next()
+		if err != nil {
+			return nil, fmt.Errorf("sff: v2 sprite: RLE5 data truncated mid block (run-count byte): %w", err)
+		}
+
+		var index byte
+		if dl&0x80 != 0 {
+			index, err = next()
+			if err != nil {
+				return nil, fmt.Errorf("sff: v2 sprite: RLE5 data truncated mid block (initial index byte): %w", err)
+			}
+		}
+
+		j, err = writeRun(j, int(rl)+1, index)
+		if err != nil {
+			return nil, err
+		}
+
+		for extra := int(dl & 0x7f); extra > 0; extra-- {
+			b, err := next()
+			if err != nil {
+				return nil, fmt.Errorf("sff: v2 sprite: RLE5 data truncated mid block (run byte): %w", err)
+			}
+			j, err = writeRun(j, int(b>>5)+1, b&0x1f)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

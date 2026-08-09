@@ -368,6 +368,145 @@ func TestDecodeV2Sprite_ReturnsErrorOnRLE8InvalidDimensions(t *testing.T) {
 	}
 }
 
+// buildRLE5 prepends the 4-byte little-endian declared-decompressed-length
+// prefix real .sff v2 RLE5 pixel data starts with (mirroring buildRLE8) to
+// a hand-built block stream.
+func buildRLE5(prefixLength uint32, stream []byte) []byte {
+	return withV2LengthPrefix(prefixLength, stream)
+}
+
+func TestDecodeV2Sprite_DecodesRLE5RunWithExplicitIndex(t *testing.T) {
+	// Block 1: rl=0x02 (3 repeats), dl=0x80 (top bit set: a third byte
+	// supplies the index, 0 more runs) -> 3 repeats of index 5.
+	// Block 2: rl=0x00 (1 repeat), dl=0x00 (top bit clear: index defaults
+	// to 0, 0 more runs) -> 1 repeat of index 0.
+	stream := []byte{0x02, 0x80, 0x05, 0x00, 0x00}
+	data := buildRLE5(4, stream)
+	want := []byte{5, 5, 5, 0}
+
+	img, err := DecodeV2Sprite(V2FormatRLE5, 4, 1, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite returned error: %v", err)
+	}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodeV2Sprite_DecodesRLE5RunWithDefaultZeroIndex(t *testing.T) {
+	// rl=0x02 (3 repeats), dl=0x00 (top bit clear: index defaults to 0).
+	stream := []byte{0x02, 0x00}
+	data := buildRLE5(3, stream)
+	want := []byte{0, 0, 0}
+
+	img, err := DecodeV2Sprite(V2FormatRLE5, 3, 1, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite returned error: %v", err)
+	}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodeV2Sprite_DecodesRLE5MultiRunBlock(t *testing.T) {
+	// rl=0x01 (2 repeats), dl=0x01 (top bit clear: index 0, 1 more run) ->
+	// 2 repeats of index 0, then one more run byte 0x47 (top 3 bits 010 =
+	// 2 -> 3 repeats, bottom 5 bits 00111 = 7 -> index 7).
+	stream := []byte{0x01, 0x01, 0x47}
+	data := buildRLE5(5, stream)
+	want := []byte{0, 0, 7, 7, 7}
+
+	img, err := DecodeV2Sprite(V2FormatRLE5, 5, 1, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite returned error: %v", err)
+	}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodeV2Sprite_DecodesSinglePixelRLE5Sprite(t *testing.T) {
+	// 1x1 boundary case: one block, one explicit-index run of length 1.
+	data := buildRLE5(1, []byte{0x00, 0x80, 0x09})
+
+	img, err := DecodeV2Sprite(V2FormatRLE5, 1, 1, 5, data)
+	if err != nil {
+		t.Fatalf("DecodeV2Sprite returned error: %v", err)
+	}
+	if img.Width != 1 || img.Height != 1 {
+		t.Fatalf("got Width=%d Height=%d, want Width=1 Height=1", img.Width, img.Height)
+	}
+	if !bytesEqual(img.Pixels, []byte{9}) {
+		t.Fatalf("got Pixels=%v, want [9]", img.Pixels)
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5DataShorterThanLengthPrefix(t *testing.T) {
+	// Real RLE5 data always starts with a 4-byte declared-length prefix;
+	// anything shorter than that can't even hold the prefix.
+	data := []byte{1, 2, 3}
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 3, 2, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for RLE5 data shorter than the length prefix, got nil")
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5RunOverrunningImageBounds(t *testing.T) {
+	// Declares a 2x1 image (2 pixels) but the block's run asks for 5
+	// repeats of a single value.
+	stream := []byte{0x04, 0x00}
+	data := buildRLE5(2, stream)
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 2, 1, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for a run overrunning the declared image size, got nil")
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5TruncatedMidBlockRunCountByte(t *testing.T) {
+	// A block's first byte with no following run-count byte.
+	stream := []byte{0x00}
+	data := buildRLE5(3, stream)
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 3, 1, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for a block truncated before its run-count byte, got nil")
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5TruncatedMidBlockInitialIndexByte(t *testing.T) {
+	// Top bit of the run-count byte is set (a third byte should follow),
+	// but the stream ends right there.
+	stream := []byte{0x00, 0x80}
+	data := buildRLE5(3, stream)
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 3, 1, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for a block truncated before its explicit initial index byte, got nil")
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5TruncatedMidBlockRunByte(t *testing.T) {
+	// dl=0x01 declares one more run, but no run byte follows it.
+	stream := []byte{0x00, 0x01}
+	data := buildRLE5(5, stream)
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 5, 1, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for a block truncated before a declared extra run byte, got nil")
+	}
+}
+
+func TestDecodeV2Sprite_ReturnsErrorOnRLE5InvalidDimensions(t *testing.T) {
+	data := buildRLE5(0, nil)
+
+	_, err := DecodeV2Sprite(V2FormatRLE5, 0, 0, 5, data)
+	if err == nil {
+		t.Fatal("expected an error for zero declared dimensions, got nil")
+	}
+}
+
 // buildLZ5 prepends the 4-byte little-endian declared-decompressed-length
 // prefix real .sff v2 LZ5 pixel data starts with (mirroring buildRLE8) to a
 // hand-built control stream.

@@ -12,3 +12,5 @@ status: accepted
 
 **Rejected alternatives:**
 - *Implement RLE5 decode from the documented algorithm alone, with no real fixture to validate against* — rejected for the same reason the encode side already rejected it (see decision `001`): an unverified decoder is worse than an honest "unsupported format" error.
+
+**Superseded (RLE5 portion only):** decision `014` implements `V2FormatRLE5` decode (and encode) anyway, at the Product Owner's explicit request, without waiting for the real fixture this decision treats as a prerequisite. The rest of this decision (Raw/RLE8/LZ5/PNG scope, per-decoder validation, error-over-panic contract) is unaffected.

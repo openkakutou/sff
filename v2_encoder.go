@@ -10,11 +10,12 @@ import (
 
 // EncodeV2Sprite is the exact inverse of DecodeV2Sprite: it encodes a
 // decoded pixel buffer back into the on-disk byte representation for
-// format. V2FormatRaw, V2FormatRLE8, V2FormatLZ5, and the PNG formats
-// (V2FormatPNG8/24/32) are supported; V2FormatRLE5 — a real but
-// unimplemented format on both the decode and encode side — returns a
-// descriptive error instead, per
-// .vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md.
+// format. V2FormatRaw, V2FormatRLE8, V2FormatRLE5, V2FormatLZ5, and the PNG
+// formats (V2FormatPNG8/24/32) are supported; see
+// .vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md and,
+// for V2FormatRLE5 specifically (implemented later, without a real
+// fixture — a deliberate departure from that decision),
+// .vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md.
 func EncodeV2Sprite(format int, img *V2Image) ([]byte, error) {
 	if img == nil {
 		return nil, fmt.Errorf("sff: v2 sprite: cannot encode a nil image")
@@ -28,6 +29,8 @@ func EncodeV2Sprite(format int, img *V2Image) ([]byte, error) {
 		return encodeV2Raw(img)
 	case V2FormatRLE8:
 		return encodeV2RLE8(img)
+	case V2FormatRLE5:
+		return encodeV2RLE5(img)
 	case V2FormatLZ5:
 		return encodeV2LZ5(img)
 	case V2FormatPNG8:
@@ -106,6 +109,66 @@ func encodeV2RLE8(img *V2Image) ([]byte, error) {
 			stream = append(stream, v)
 		} else {
 			stream = append(stream, 0x40|byte(run), v)
+		}
+		pos += run
+	}
+
+	return withV2LengthPrefix(uint32(want), stream), nil
+}
+
+// rle5MaxRun is the largest repeat count a single RLE5 block's first run
+// can carry — its 8-bit field (decodeV2RLE5's doc comment: byte 1 holds
+// count-1), giving a maximum of 256 repeats per block.
+const rle5MaxRun = 256
+
+// rle5MaxIndex is the largest palette index this encoder ever emits — RLE5
+// is a 5-bit indexed format, the same convention lz5MaxIndex documents for
+// LZ5 (real files declare ColorDepth 5) — even though decodeV2RLE5's first
+// run byte can technically carry a full 8-bit value unmasked (an artifact
+// of the reference algorithm this encoder does not rely on).
+const rle5MaxIndex = 0x1f
+
+// encodeV2RLE5 encodes V2FormatRLE5 pixel data, the inverse of
+// decodeV2RLE5, targeting a semantic round trip through DecodeV2Sprite
+// rather than byte-for-byte reproduction of any real encoder's output (see
+// .vibe/decisions/001-v2-rle8-lz5-encode-scope-and-rle5-deferred.md and
+// .vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md).
+//
+// Unlike decodeV2RLE5, which understands blocks chaining several runs
+// together via a block's "dl" field, this encoder always emits exactly one
+// run per block — the simplest correct encoding, mirroring encodeV2LZ5's
+// own "literal runs only, never back-references" simplification. Each
+// maximal run of identical pixels (up to rle5MaxRun, splitting a longer
+// run across multiple blocks) becomes one block: 2 bytes (count-1, 0x00)
+// when the run's value is 0 — the common case, and the one decodeV2RLE5
+// doesn't need a third byte for — or 3 bytes (count-1, 0x80, value)
+// otherwise.
+func encodeV2RLE5(img *V2Image) ([]byte, error) {
+	if img.BytesPerPixel != 1 {
+		return nil, fmt.Errorf("sff: v2 sprite: RLE5 format requires BytesPerPixel 1 (indexed), got %d", img.BytesPerPixel)
+	}
+	want := img.Width * img.Height
+	if len(img.Pixels) != want {
+		return nil, fmt.Errorf("sff: v2 sprite: pixel buffer length %d does not match declared %dx%d size (%d bytes)", len(img.Pixels), img.Width, img.Height, want)
+	}
+
+	var stream []byte
+	pos := 0
+	for pos < want {
+		v := img.Pixels[pos]
+		if v > rle5MaxIndex {
+			return nil, fmt.Errorf("sff: v2 sprite: RLE5 format only supports palette indices 0-%d (5-bit), got %d at pixel %d", rle5MaxIndex, v, pos)
+		}
+		run := 1
+		for pos+run < want && img.Pixels[pos+run] == v && run < rle5MaxRun {
+			run++
+		}
+
+		stream = append(stream, byte(run-1))
+		if v == 0 {
+			stream = append(stream, 0x00)
+		} else {
+			stream = append(stream, 0x80, v)
 		}
 		pos += run
 	}
