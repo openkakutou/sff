@@ -1,5 +1,5 @@
 ---
-status: todo
+status: in_progress
 ---
 # Extract & Migrate Existing `sff` Parse/Serialize/Palette Code From `character`
 
