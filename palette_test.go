@@ -3,6 +3,7 @@ package sff
 import (
 	"bytes"
 	"image/color"
+	"io"
 	"testing"
 )
 
@@ -557,6 +558,301 @@ func TestResolveV2Palette_OverrideSupplied_BypassesIndexRangeCheck(t *testing.T)
 	}
 	if got != override {
 		t.Fatalf("got %v, want the override palette", got)
+	}
+}
+
+func TestEncodeV1Palette_RoundTripsByteExactlyWithDecodeV1Palette(t *testing.T) {
+	original := buildV1PaletteBlock()
+	p, err := DecodeV1Palette(original)
+	if err != nil {
+		t.Fatalf("test setup: DecodeV1Palette: %v", err)
+	}
+
+	got := EncodeV1Palette(p)
+	if !bytes.Equal(got, original) {
+		t.Fatalf("EncodeV1Palette(DecodeV1Palette(original)) does not reproduce the original 768 bytes")
+	}
+}
+
+func TestEncodeV1Palette_ProducesExactlyV1PaletteBlockSizeBytes(t *testing.T) {
+	var p Palette
+	got := EncodeV1Palette(p)
+	if len(got) != V1PaletteBlockSize {
+		t.Fatalf("got %d bytes, want exactly %d", len(got), V1PaletteBlockSize)
+	}
+}
+
+func TestEncodeV1Palette_IgnoresAlphaChannel(t *testing.T) {
+	var opaque, transparent Palette
+	opaque[10] = color.RGBA{R: 11, G: 22, B: 33, A: 255}
+	transparent[10] = color.RGBA{R: 11, G: 22, B: 33, A: 0}
+
+	gotOpaque := EncodeV1Palette(opaque)
+	gotTransparent := EncodeV1Palette(transparent)
+	if !bytes.Equal(gotOpaque, gotTransparent) {
+		t.Fatalf("v1 palette encoding must not depend on alpha (v1 has no per-color alpha on disk): got %v vs %v", gotOpaque, gotTransparent)
+	}
+	if gotOpaque[30] != 11 || gotOpaque[31] != 22 || gotOpaque[32] != 33 {
+		t.Fatalf("index 10 RGB triplet: got (%d,%d,%d), want (11,22,33)", gotOpaque[30], gotOpaque[31], gotOpaque[32])
+	}
+}
+
+func TestEncodeV2Palette_RoundTripsByteExactlyWithDecodeV2Palette(t *testing.T) {
+	original := buildV2PaletteColorData(256)
+	p, err := DecodeV2Palette(original)
+	if err != nil {
+		t.Fatalf("test setup: DecodeV2Palette: %v", err)
+	}
+
+	got, err := EncodeV2Palette(p, 256)
+	if err != nil {
+		t.Fatalf("EncodeV2Palette: unexpected error: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("EncodeV2Palette(DecodeV2Palette(original), 256) does not reproduce the original bytes")
+	}
+}
+
+func TestEncodeV2Palette_FewerThanMaxColors_EncodesOnlyDeclaredCount(t *testing.T) {
+	var p Palette
+	p[0] = color.RGBA{R: 1, G: 2, B: 3, A: 4}
+	p[3] = color.RGBA{R: 9, G: 8, B: 7, A: 6}
+	p[4] = color.RGBA{R: 255, G: 255, B: 255, A: 255} // must not be encoded: beyond colorCount
+
+	got, err := EncodeV2Palette(p, 4)
+	if err != nil {
+		t.Fatalf("EncodeV2Palette: unexpected error: %v", err)
+	}
+	if len(got) != 16 {
+		t.Fatalf("got %d bytes, want exactly %d (4 colors * 4 bytes)", len(got), 16)
+	}
+	want := []byte{1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 9, 8, 7, 6}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestEncodeV2Palette_ColorCountOutOfRange_ReturnsError(t *testing.T) {
+	var p Palette
+	if _, err := EncodeV2Palette(p, -1); err == nil {
+		t.Error("expected an error for colorCount -1, got nil")
+	}
+	if _, err := EncodeV2Palette(p, 257); err == nil {
+		t.Error("expected an error for colorCount 257, got nil")
+	}
+}
+
+func TestEncodeV2Palette_ZeroColorCount_ReturnsEmptySlice(t *testing.T) {
+	var p Palette
+	got, err := EncodeV2Palette(p, 0)
+	if err != nil {
+		t.Fatalf("EncodeV2Palette: unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("got %d bytes, want 0", len(got))
+	}
+}
+
+func TestEncodeExternalPalette_RoundTripsByteExactlyWithDecodeExternalPalette(t *testing.T) {
+	original := buildExternalPaletteBlock()
+	p, err := DecodeExternalPalette(original)
+	if err != nil {
+		t.Fatalf("test setup: DecodeExternalPalette: %v", err)
+	}
+
+	got := EncodeExternalPalette(p)
+	if !bytes.Equal(got, original) {
+		t.Fatalf("EncodeExternalPalette(DecodeExternalPalette(original)) does not reproduce the original 768 bytes")
+	}
+}
+
+func TestEncodeExternalPalette_ProducesExactlyExternalPaletteSizeBytes(t *testing.T) {
+	var p Palette
+	got := EncodeExternalPalette(p)
+	if len(got) != externalPaletteSize {
+		t.Fatalf("got %d bytes, want exactly %d", len(got), externalPaletteSize)
+	}
+}
+
+// TestEncodeExternalPalette_RealFixtureRoundTrips exercises the .act
+// export/import round trip against a real, unmodified community .act file
+// (not just synthetic data) — see CLAUDE.md's fixture-driven testing
+// convention.
+func TestEncodeExternalPalette_RealFixtureRoundTrips(t *testing.T) {
+	for _, name := range []string{"cyclops-v1-palette1.act", "greenarrow-v1-palette1.act"} {
+		t.Run(name, func(t *testing.T) {
+			f := openTestdataFile(t, name)
+			defer f.Close()
+			original, err := io.ReadAll(f)
+			if err != nil {
+				t.Fatalf("reading fixture: %v", err)
+			}
+
+			p, err := DecodeExternalPalette(original)
+			if err != nil {
+				t.Fatalf("DecodeExternalPalette: %v", err)
+			}
+			got := EncodeExternalPalette(p)
+			if !bytes.Equal(got, original) {
+				t.Fatalf("re-encoded .act bytes do not match the original fixture byte-for-byte")
+			}
+		})
+	}
+}
+
+func TestPalette_SetColor_SetsColorAtValidIndex(t *testing.T) {
+	var p Palette
+	if err := p.SetColor(42, 10, 20, 30, 40); err != nil {
+		t.Fatalf("SetColor: unexpected error: %v", err)
+	}
+	want := color.RGBA{R: 10, G: 20, B: 30, A: 40}
+	if p[42] != want {
+		t.Fatalf("got %v, want %v", p[42], want)
+	}
+}
+
+func TestPalette_SetColor_BoundaryComponentValues_Accepted(t *testing.T) {
+	var p Palette
+	if err := p.SetColor(0, 0, 0, 0, 0); err != nil {
+		t.Fatalf("SetColor with all-zero components: unexpected error: %v", err)
+	}
+	if err := p.SetColor(255, 255, 255, 255, 255); err != nil {
+		t.Fatalf("SetColor with all-255 components: unexpected error: %v", err)
+	}
+	want := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	if p[255] != want {
+		t.Fatalf("index 255: got %v, want %v", p[255], want)
+	}
+}
+
+func TestPalette_SetColor_IndexOutOfRange_ReturnsErrorAndLeavesPaletteUnchanged(t *testing.T) {
+	var p Palette
+	p[0] = color.RGBA{R: 1, G: 2, B: 3, A: 4}
+
+	if err := p.SetColor(-1, 10, 10, 10, 10); err == nil {
+		t.Error("expected an error for index -1, got nil")
+	}
+	if err := p.SetColor(256, 10, 10, 10, 10); err == nil {
+		t.Error("expected an error for index 256, got nil")
+	}
+	if p[0] != (color.RGBA{R: 1, G: 2, B: 3, A: 4}) {
+		t.Fatalf("palette was mutated despite the out-of-range index being rejected: %v", p[0])
+	}
+}
+
+func TestPalette_SetColor_ComponentOutOfRange_ReturnsErrorAndLeavesPaletteUnchanged(t *testing.T) {
+	cases := []struct {
+		name       string
+		r, g, b, a int
+	}{
+		{"r too low", -1, 0, 0, 0},
+		{"r too high", 256, 0, 0, 0},
+		{"g too low", 0, -1, 0, 0},
+		{"g too high", 0, 256, 0, 0},
+		{"b too low", 0, 0, -1, 0},
+		{"b too high", 0, 0, 256, 0},
+		{"a too low", 0, 0, 0, -1},
+		{"a too high", 0, 0, 0, 256},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var p Palette
+			p[5] = color.RGBA{R: 9, G: 9, B: 9, A: 9}
+
+			err := p.SetColor(5, c.r, c.g, c.b, c.a)
+			if err == nil {
+				t.Fatalf("expected an error for components (%d,%d,%d,%d), got nil", c.r, c.g, c.b, c.a)
+			}
+			if p[5] != (color.RGBA{R: 9, G: 9, B: 9, A: 9}) {
+				t.Fatalf("palette was mutated despite the out-of-range component being rejected: %v", p[5])
+			}
+		})
+	}
+}
+
+// TestSerializeV1_EditedPaletteReencodesAndSurvivesFullRoundTrip proves
+// acceptance criterion "an edited palette re-encodes correctly for v1
+// sprites": decode a real embedded block, edit one color, re-encode it,
+// write a full .sff v1 file with it, then reparse+reresolve and confirm the
+// edit (and only the edit) survived.
+func TestSerializeV1_EditedPaletteReencodesAndSurvivesFullRoundTrip(t *testing.T) {
+	p, err := DecodeV1Palette(buildV1PaletteBlock())
+	if err != nil {
+		t.Fatalf("test setup: DecodeV1Palette: %v", err)
+	}
+	if err := p.SetColor(7, 200, 150, 100, 255); err != nil {
+		t.Fatalf("test setup: SetColor: %v", err)
+	}
+
+	sprites := []V1WriteSprite{{
+		Group: 0, Image: 0, SharedPalette: false,
+		PixelData: mustEncodePCX(t, &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}}),
+		Palette:   EncodeV1Palette(p),
+	}}
+
+	var buf bytes.Buffer
+	if err := SerializeV1(&buf, [4]byte{1, 0, 0, 1}, false, sprites); err != nil {
+		t.Fatalf("SerializeV1: %v", err)
+	}
+
+	table, err := ParseV1(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	got, err := ResolveV1Palette(table, bytes.NewReader(buf.Bytes()), 0, nil)
+	if err != nil {
+		t.Fatalf("ResolveV1Palette: %v", err)
+	}
+	if want := (color.RGBA{R: 200, G: 150, B: 100, A: 255}); got[7] != want {
+		t.Errorf("edited index 7: got %v, want %v", got[7], want)
+	}
+	// An untouched index must still carry its original value.
+	if want := (color.RGBA{R: 1, G: 254, B: 0, A: 255}); got[1] != want {
+		t.Errorf("untouched index 1: got %v, want %v (edit must not disturb other colors)", got[1], want)
+	}
+}
+
+// TestSerializeV2_EditedPaletteReencodesAndSurvivesFullRoundTrip mirrors
+// TestSerializeV1_EditedPaletteReencodesAndSurvivesFullRoundTrip for v2
+// palette banks.
+func TestSerializeV2_EditedPaletteReencodesAndSurvivesFullRoundTrip(t *testing.T) {
+	p, err := DecodeV2Palette(buildV2PaletteColorData(256))
+	if err != nil {
+		t.Fatalf("test setup: DecodeV2Palette: %v", err)
+	}
+	if err := p.SetColor(7, 200, 150, 100, 90); err != nil {
+		t.Fatalf("test setup: SetColor: %v", err)
+	}
+	colorData, err := EncodeV2Palette(p, 256)
+	if err != nil {
+		t.Fatalf("EncodeV2Palette: %v", err)
+	}
+
+	sprites := []V2WriteSprite{{
+		Group: 0, Image: 0, Width: 1, Height: 1, Format: 0, ColorDepth: 8,
+		PaletteIndex: 0,
+		PixelData:    mustEncodeV2Sprite(t, 0, &V2Image{Width: 1, Height: 1, BytesPerPixel: 1, Pixels: []byte{0}}),
+	}}
+	palettes := []V2WritePalette{{Group: 0, Number: 0, ColorCount: 256, ColorData: colorData}}
+
+	var buf bytes.Buffer
+	if err := SerializeV2(&buf, [4]byte{0, 1, 0, 2}, sprites, palettes); err != nil {
+		t.Fatalf("SerializeV2: %v", err)
+	}
+
+	table, err := ParseV2(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("ParseV2: %v", err)
+	}
+	got, err := ResolveV2Palette(table, bytes.NewReader(buf.Bytes()), 0, nil)
+	if err != nil {
+		t.Fatalf("ResolveV2Palette: %v", err)
+	}
+	if want := (color.RGBA{R: 200, G: 150, B: 100, A: 90}); got[7] != want {
+		t.Errorf("edited index 7: got %v, want %v", got[7], want)
+	}
+	if want := (color.RGBA{R: 1, G: 254, B: 0, A: 1}); got[1] != want {
+		t.Errorf("untouched index 1: got %v, want %v (edit must not disturb other colors)", got[1], want)
 	}
 }
 

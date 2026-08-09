@@ -20,7 +20,7 @@ Defined in: `sprite.go`
 Defined in: `sprite.go`
 
 ## Palette
-`[256]color.RGBA` — a resolved 256-entry color palette, shared between v1 and v2 once decoded.
+`[256]color.RGBA` — a resolved 256-entry color palette, shared between v1 and v2 once decoded. `EncodeV1Palette`/`EncodeV2Palette`/`EncodeExternalPalette` re-encode it back to each on-disk format (exact inverses of the corresponding `Decode*` functions). `(*Palette).SetColor(index, r, g, b, a int) error` is the validated way to edit a color from caller-supplied integers, rejecting an out-of-range index or component instead of silently wrapping.
 Defined in: `palette.go`
 
 ## AlphaRule

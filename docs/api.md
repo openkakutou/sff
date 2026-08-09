@@ -38,6 +38,10 @@ Most consumers only need these two functions.
 |---|---|
 | `DecodeV1Palette(data []byte) (Palette, error)` / `DecodeV2Palette(data []byte) (Palette, error)` | Decodes raw palette bytes into a resolved `Palette`. |
 | `DecodeExternalPalette(data []byte) (Palette, error)` | Decodes a standalone `.act` external palette file. |
+| `EncodeV1Palette(p Palette) []byte` | Encodes `p` back into a 768-byte v1 embedded palette block — the exact inverse of `DecodeV1Palette`. Alpha is ignored (v1 has no on-disk alpha channel). |
+| `EncodeV2Palette(p Palette, colorCount int) ([]byte, error)` | Encodes the first `colorCount` colors of `p` into v2 palette bank RGBA color data — the exact inverse of `DecodeV2Palette`. Errors if `colorCount` is outside `[0, 256]`. |
+| `EncodeExternalPalette(p Palette) []byte` | Encodes `p` into a standalone 768-byte `.act` file buffer — the exact inverse of `DecodeExternalPalette`. Alpha is ignored (an `.act` file has no on-disk alpha channel). |
+| `(*Palette).SetColor(index, r, g, b, a int) error` | Edits the color at `index` to `(r, g, b, a)`. Returns a descriptive error and leaves the palette unchanged if `index` or any component is outside `[0, 255]`, instead of silently wrapping (e.g. a raw `uint8(300)` conversion). This is the validated entry point for editing a `Palette` from caller-supplied integers. |
 | `ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Palette) (Palette, error)` | Resolves sprite `i`'s effective palette — its own, an inherited one (palette sharing), or `override` if non-nil. |
 | `ResolveV2Palette(table *V2SpriteTable, r io.ReaderAt, index int, override *Palette) (Palette, error)` | v2 equivalent, resolving a palette bank index. |
 | `ResolvePixels(indices []byte, palette Palette, rule AlphaRule) []color.RGBA` | Applies a resolved `Palette` to indexed pixel data, per an `AlphaRule` (forced-transparent-at-index-0 vs. literal alpha — format-dependent). |

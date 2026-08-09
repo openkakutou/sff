@@ -20,6 +20,30 @@ const V1PaletteBlockSize = 768
 // .vibe/decisions/014-palette-resolution-api-shape.md.
 type Palette [256]color.RGBA
 
+// SetColor edits p's color at index to (r, g, b, a). index and every color
+// component must be in [0, 255]; SetColor returns a descriptive error and
+// leaves p unchanged instead of silently wrapping or clamping an
+// out-of-range value the way a direct uint8(v) conversion would (e.g.
+// uint8(300) silently becomes 44). This is the validated entry point for
+// editing a Palette from caller-supplied integers — e.g. a UI or the
+// eventual WASM/JS bridge — where values arrive as plain ints, not
+// already-safe uint8s.
+func (p *Palette) SetColor(index, r, g, b, a int) error {
+	if index < 0 || index >= len(p) {
+		return fmt.Errorf("sff: palette: SetColor: index %d out of range [0, %d]", index, len(p)-1)
+	}
+	for _, comp := range [...]struct {
+		name string
+		v    int
+	}{{"r", r}, {"g", g}, {"b", b}, {"a", a}} {
+		if comp.v < 0 || comp.v > 255 {
+			return fmt.Errorf("sff: palette: SetColor: component %s=%d out of range [0, 255]", comp.name, comp.v)
+		}
+	}
+	p[index] = color.RGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: uint8(a)}
+	return nil
+}
+
 // AlphaRule selects how ResolvePixels determines a resolved pixel's alpha
 // channel at palette index 0. The reference decoders this package tracks
 // apply one of two rules depending on the sprite's own encoding, not a
@@ -120,6 +144,21 @@ func resolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int) (Palette, erro
 	return DecodeV1Palette(block)
 }
 
+// EncodeV1Palette encodes p into a V1PaletteBlockSize-byte (768) v1 embedded
+// palette block — 256 RGB triplets, 3 bytes/color — the exact inverse of
+// DecodeV1Palette. Alpha is ignored: a v1 embedded palette has no on-disk
+// alpha channel (DecodeV1Palette always resolves it to opaque), so encoding
+// two palettes that differ only in alpha produces identical bytes.
+func EncodeV1Palette(p Palette) []byte {
+	data := make([]byte, V1PaletteBlockSize)
+	for i, c := range p {
+		data[i*3] = c.R
+		data[i*3+1] = c.G
+		data[i*3+2] = c.B
+	}
+	return data
+}
+
 // externalPaletteSize is the fixed size, in bytes, of an external .act
 // palette file (256 RGB triplets, 3 bytes/color) — numerically the same as
 // V1PaletteBlockSize, but named separately since it is a distinct on-disk
@@ -146,6 +185,23 @@ func DecodeExternalPalette(data []byte) (Palette, error) {
 	return p, nil
 }
 
+// EncodeExternalPalette encodes p into a standalone externalPaletteSize-byte
+// (768) MUGEN/Ikemen .act palette file buffer — the exact inverse of
+// DecodeExternalPalette's index reversal. Alpha is ignored: like v1's
+// embedded palette, an .act file has no on-disk alpha channel and always
+// stores opaque triplets, so p's own alpha values (including the forced-
+// transparent index 0 DecodeExternalPalette produces) are not written back.
+func EncodeExternalPalette(p Palette) []byte {
+	data := make([]byte, externalPaletteSize)
+	for i := 0; i < 256; i++ {
+		c := p[255-i]
+		data[i*3] = c.R
+		data[i*3+1] = c.G
+		data[i*3+2] = c.B
+	}
+	return data
+}
+
 // DecodeV2Palette decodes a .sff v2 palette bank's raw color data — already
 // stored as RGBA on disk, 4 bytes/color, unlike v1's opaque-only RGB
 // triplets — into a Palette. data's length must be a multiple of 4 and
@@ -165,6 +221,27 @@ func DecodeV2Palette(data []byte) (Palette, error) {
 		p[i] = color.RGBA{R: data[i*4], G: data[i*4+1], B: data[i*4+2], A: data[i*4+3]}
 	}
 	return p, nil
+}
+
+// EncodeV2Palette encodes the first colorCount colors of p into v2 palette
+// bank color data — RGBA, 4 bytes/color — the exact inverse of
+// DecodeV2Palette. colorCount must be between 0 and 256 inclusive; entries
+// of p beyond colorCount are not written, mirroring how DecodeV2Palette
+// leaves entries beyond its own declared count at their zero value.
+func EncodeV2Palette(p Palette, colorCount int) ([]byte, error) {
+	if colorCount < 0 || colorCount > 256 {
+		return nil, fmt.Errorf("sff: v2 palette: colorCount %d out of range [0, 256]", colorCount)
+	}
+
+	data := make([]byte, colorCount*4)
+	for i := 0; i < colorCount; i++ {
+		c := p[i]
+		data[i*4] = c.R
+		data[i*4+1] = c.G
+		data[i*4+2] = c.B
+		data[i*4+3] = c.A
+	}
+	return data, nil
 }
 
 // ResolveV2Palette resolves the palette bank at index within table.Palettes
