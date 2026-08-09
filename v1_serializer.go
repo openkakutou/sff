@@ -41,7 +41,7 @@ type V1WriteSprite struct {
 	// always embed an owning sprite's palette immediately after its own
 	// pixel data, folded into the subheader's declared Length rather than
 	// following it — see
-	// .vibe/decisions/018-v1-palette-block-lives-inside-declared-length.md.
+	// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
 	// Ignored when SharedPalette is true.
 	Palette []byte
 	// LinkedIndex is the index, within the Sprites slice passed to
@@ -91,8 +91,8 @@ func SerializeV1(w io.Writer, version [4]byte, sharedPalette bool, sprites []V1W
 
 	// A sprite that does not share its palette embeds its own trailing
 	// V1PaletteBlockSize-byte block, folded into its declared Length rather
-	// than following it — see .vibe/decisions/018-v1-palette-block-lives-
-	// inside-declared-length.md.
+	// than following it — see
+	// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
 	ownLength := func(s V1WriteSprite) uint32 {
 		n := uint32(len(s.PixelData))
 		if !s.SharedPalette {

@@ -171,7 +171,7 @@ func decodeV2RLE8(width, height, colorDepth int, data []byte) (*V2Image, error) 
 // buffer is full without reporting it, this port treats both as a
 // descriptive error instead — matching decodeV2RLE8's own error-handling
 // contract for the same "malformed compressed data" class of problem; see
-// .vibe/decisions/015-v2-lz5-decode-error-handling-diverges-from-reference.md.
+// .vibe/decisions/009-v2-lz5-decode-error-handling-diverges-from-reference.md.
 //
 // Unlike decodeV2Raw/decodeV2RLE8, colorDepth is not validated here: real
 // LZ5 sprites (checked against a corpus of real characters) are declared

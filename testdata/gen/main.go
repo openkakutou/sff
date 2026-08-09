@@ -136,7 +136,7 @@ func resolveGroupV2(table *sff.V2SpriteTable, group, nth int) (int, error) {
 
 // resolvePaletteOwnerV1 mirrors the sff package's own (corrected)
 // palette-inheritance rule (see
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md):
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // a sprite that shares (SharedPalette == true) inherits table index 0's
 // own owner when it is itself (Group 0, Image 0), or the immediately
 // preceding sprite's owner otherwise. Table index 0 always owns — there is
@@ -158,7 +158,7 @@ func resolvePaletteOwnerV1(table *sff.V1SpriteTable, i int) int {
 // [Offset, Offset+Length) span — a v1 sprite's declared Length includes
 // its own trailing palette block when it owns one, confirmed against real
 // files (see
-// .vibe/decisions/018-v1-palette-block-lives-inside-declared-length.md),
+// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md),
 // not a suffix starting right after it.
 func findOwnPalette(table *sff.V1SpriteTable, data []byte, i int) ([]byte, error) {
 	owner := resolvePaletteOwnerV1(table, i)
@@ -173,7 +173,7 @@ func findOwnPalette(table *sff.V1SpriteTable, data []byte, i int) ([]byte, error
 
 // resolvePixelOwnerV1 mirrors the sff package's own (corrected) linking
 // rule (see
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md):
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // a zero-length sprite always inherits the immediately preceding table
 // entry's pixel owner — its own LinkedIndex field is not consulted for
 // this case; a sprite with its own pixel data uses it unless its own
@@ -217,7 +217,7 @@ func ownPixelLength(table *sff.V1SpriteTable, i int) int {
 // earlier real sprite — its pixel data (Length == 0) and/or its palette
 // (SharedPalette == true) — it keeps exactly one donor entry, placed
 // immediately before the target: sff's corrected v1 resolution (see
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md)
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md)
 // always inherits pixel data from the table position right before a
 // zero-length sprite, and — for the (Group, Image) != (0, 0) case this
 // package's scenarios exercise — palette from that same position for a
@@ -332,7 +332,7 @@ func encodeV1(h sff.V1Header, sprites []v1Sprite) ([]byte, error) {
 		}
 		// A non-shared entry's declared Length includes its own trailing
 		// palette block, matching real files — see
-		// .vibe/decisions/018-v1-palette-block-lives-inside-declared-length.md.
+		// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
 		length := len(s.pixel)
 		if !s.shared {
 			length += len(s.palette)

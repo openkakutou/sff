@@ -5,10 +5,12 @@ package sff
 // combining what ParseV1/ParseV2, ResolveV1Pixels/DecodeV2Sprite, and
 // ResolveV1Palette/ResolveV2Palette already do individually — needed so
 // character-viewer-web can render real sprite images, not just metadata
-// (.vibe/decisions/019-...md deferred this; .vibe/decisions/020-...md
-// designs this function's contract). Reuses the same real fixtures and
-// expected reference PNGs as the v1 fixture-driven suite (item 028) so
-// results are checked against ground truth, not just "didn't error".
+// (earlier work only exposed sprite metadata; this function's own batched,
+// stateless contract is decision
+// .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md).
+// Reuses the same real fixtures and expected reference PNGs as the v1
+// fixture-driven suite (item 028) so results are checked against ground
+// truth, not just "didn't error".
 
 import (
 	"bytes"
@@ -142,9 +144,9 @@ func TestResolveSpritePixels_V2DirectColorMatchesReferencePNG(t *testing.T) {
 
 // TestResolveSpritePixels_SpriteNotFound asserts the "not found" error is
 // distinguishable (a stable "sprite not found: " prefix, per
-// .vibe/decisions/020-...md) from every other kind of failure, so a caller
-// probing candidate (group, image) pairs can tell "doesn't exist" apart
-// from "something is broken".
+// .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md)
+// from every other kind of failure, so a caller probing candidate (group,
+// image) pairs can tell "doesn't exist" apart from "something is broken".
 func TestResolveSpritePixels_SpriteNotFound(t *testing.T) {
 	f := openTestdataFile(t, "v1-basic.sff")
 	defer f.Close()
@@ -199,7 +201,8 @@ func TestResolveSpritePixels_V2LinkedSpriteNotYetSupported(t *testing.T) {
 // TestCheckSpriteDimensions guards ResolveSpritePixels against a corrupt or
 // adversarial file declaring an implausibly large sprite (this function is
 // reachable directly from untrusted caller-supplied bytes via the WASM
-// boundary — see .vibe/decisions/020-...md).
+// boundary — see
+// .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md).
 func TestCheckSpriteDimensions(t *testing.T) {
 	cases := []struct {
 		name          string

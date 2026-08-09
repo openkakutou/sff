@@ -17,7 +17,7 @@ import (
 // behavior for this case; palette index 0 always resolves to fully
 // transparent under AlphaForceTransparentAtIndexZero, so the specific
 // fallback pixel value does not otherwise matter. See
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md.
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md.
 const v1MaxPixelCount int64 = 65536 * 65536
 
 // peekPCXDimensions reads a PCX image's declared width/height directly from
@@ -143,7 +143,7 @@ func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 
 // resolveV1Pixels returns the decoded PCX pixel data belonging to sprite
 // index i in table, replicating the reference decoder's exact linking rule
-// (see .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md):
+// (see .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // a sprite with no pixel data of its own (Length == 0) always inherits the
 // immediately preceding table entry's already-resolved image — its own
 // LinkedIndex field, despite being stored, is not consulted for this case.

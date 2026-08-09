@@ -150,7 +150,7 @@ type v1TestEntry struct {
 // V1PaletteBlockSize bytes of its own [Offset, Offset+Length) span — the
 // real on-disk layout confirmed against genuine .sff v1 files, not a
 // trimmed/re-encoded one (see
-// .vibe/decisions/018-v1-palette-block-lives-inside-declared-length.md). A
+// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md). A
 // shared entry's declared Length is pixelLen alone (no embedded palette).
 func buildV1TableAndData(entries []v1TestEntry) (*V1SpriteTable, []byte) {
 	table := &V1SpriteTable{}

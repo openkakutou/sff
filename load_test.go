@@ -135,7 +135,7 @@ func TestLoad_V1LinkedSprite_ResolvesDimensionsFromLinkTarget(t *testing.T) {
 
 // TestLoad_V1FirstSpriteHasNoPixelDataOfItsOwn_ReturnsDescriptiveError covers
 // the terminal case of the corrected v1 linking rule (see
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md):
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // table index 0 can never inherit pixel data from an earlier entry, since
 // none exists. Replaces a previous test built around a mutual LinkedIndex
 // cycle — no longer reachable now that a zero-length sprite always

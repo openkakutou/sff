@@ -17,7 +17,7 @@ const V1PaletteBlockSize = 768
 // It is kept separate from PCXImage/V2Image/Sprite — the read-path
 // pure-data types — as an explicit opt-in helper, mirroring how DecodePCX
 // and DecodeV2Sprite are already separate from Load; see
-// .vibe/decisions/014-palette-resolution-api-shape.md.
+// .vibe/decisions/008-palette-resolution-api-shape.md.
 type Palette [256]color.RGBA
 
 // SetColor edits p's color at index to (r, g, b, a). index and every color
@@ -95,7 +95,7 @@ func DecodeV1Palette(data []byte) (Palette, error) {
 
 // ResolveV1Palette resolves the palette used by sprite index i in table,
 // replicating the reference decoder's exact inheritance rule (see
-// .vibe/decisions/017-v1-sprite-linking-and-palette-inheritance-rules.md):
+// .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // a sprite that does not share (SharedPalette == false) decodes its own
 // embedded block; one that does share inherits table index 0's own
 // resolved palette when it is itself (Group 0, Image 0), or the
@@ -108,12 +108,12 @@ func DecodeV1Palette(data []byte) (Palette, error) {
 // span, not a suffix starting right after it: a v1 sprite's declared
 // Length includes its own trailing palette block when it owns one,
 // confirmed against real, unmodified .sff v1 files — see
-// .vibe/decisions/018-v1-palette-block-lives-inside-declared-length.md.
+// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
 //
 // If override is non-nil, it is returned immediately instead — a caller-
 // supplied external palette (see DecodeExternalPalette) used in place of
 // the sprite's own, bypassing the table lookup entirely. See
-// .vibe/decisions/016-external-palette-override-api-shape.md.
+// .vibe/decisions/010-external-palette-override-api-shape.md.
 func ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Palette) (Palette, error) {
 	if override != nil {
 		return *override, nil
@@ -255,7 +255,7 @@ func EncodeV2Palette(p Palette, colorCount int) ([]byte, error) {
 // If override is non-nil, it is returned immediately instead — a caller-
 // supplied external palette (see DecodeExternalPalette) used in place of
 // the bank's own, bypassing the table lookup entirely. See
-// .vibe/decisions/016-external-palette-override-api-shape.md.
+// .vibe/decisions/010-external-palette-override-api-shape.md.
 func ResolveV2Palette(table *V2SpriteTable, r io.ReaderAt, index int, override *Palette) (Palette, error) {
 	if override != nil {
 		return *override, nil

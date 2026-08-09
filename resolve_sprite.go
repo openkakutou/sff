@@ -10,7 +10,7 @@ import (
 // adversarial .sff file declaring an implausibly large sprite: unlike the
 // rest of this package's decode path, ResolveSpritePixels is reachable
 // directly from untrusted caller-supplied bytes (the WASM boundary, see
-// cmd/wasm and .vibe/decisions/020-wasm-sprite-pixel-resolution-batched-stateless-contract.md).
+// cmd/wasm and .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md).
 // 4096 per axis comfortably exceeds every known real MUGEN/Ikemen sprite
 // (typically well under 1024x1024).
 const SpritePixelDimensionLimit = 4096
@@ -28,7 +28,7 @@ const SpritePixelDimensionLimit = 4096
 // large declared size) — so a caller iterating candidate sprites (e.g.
 // browsing a sheet) can tell "doesn't exist" apart from "something is
 // broken" without parsing the rest of the message. See
-// .vibe/decisions/020-wasm-sprite-pixel-resolution-batched-stateless-contract.md.
+// .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md.
 //
 // A v2 sprite that shares (rather than owns) its pixel data is not yet
 // supported and returns a descriptive error: no v2 linked-sprite decode
