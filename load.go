@@ -59,8 +59,7 @@ const signaturePeekSize = 16
 // records whether a sprite reuses the previous sprite's palette, not a
 // numeric reference, so Sprite.Palette is derived by incrementing a counter
 // on every sprite that does not share, and having sharing sprites inherit
-// the current value — see
-// .vibe/decisions/010-def-loader-assembles-character-from-referenced-files.md.
+// the current value.
 //
 // v2's sprite table already carries width/height and an explicit palette
 // bank index, so each V2SpriteEntry maps directly to a Sprite without
