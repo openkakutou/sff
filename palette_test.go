@@ -280,6 +280,61 @@ func TestResolveV1Palette_DeclaredLengthTooShortForPaletteBlock_ReturnsError(t *
 	}
 }
 
+func TestResolveV1Palette_SpriteZero_MarkedSharedWithTooShortLength_ReturnsEmptyPaletteInsteadOfError(t *testing.T) {
+	// Real-world case found by the corpus compatibility scan (backlog item
+	// 005): a file's very first sprite (index 0, nothing earlier to inherit
+	// from) can be marked SharedPalette (samepal) true while carrying too
+	// little data for even a partial embedded block. The reference decoder
+	// (Ikemen-GO) never treats this as an error: SharedPalette true means
+	// "give me an already-resolved palette, not decode one of my own" — with
+	// no earlier sprite to hand one over, it allocates a fresh, empty
+	// palette bank rather than reading (or failing to read) embedded data
+	// that was never meant to be there. This is unrelated to, and narrower
+	// than, TestResolveV1Palette_SpriteZero_DecodesItsOwnBlockEvenWhenMarkedShared
+	// below, whose Length is long enough to contain a real block — that
+	// case is untouched by this one.
+	table := &V1SpriteTable{Sprites: []V1SpriteEntry{
+		{Offset: 100, Length: 690, Group: 0, Image: 0, SharedPalette: true},
+	}}
+	data := make([]byte, 800)
+
+	got, err := ResolveV1Palette(table, bytes.NewReader(data), 0, nil)
+	if err != nil {
+		t.Fatalf("ResolveV1Palette: unexpected error: %v", err)
+	}
+	if got != (Palette{}) {
+		t.Errorf("expected an empty (zero-value) Palette, got %v", got[0])
+	}
+}
+
+func TestResolveV1Palette_ZeroLengthSprite_InheritsPrecedingSpritesPaletteEvenWhenNotMarkedShared(t *testing.T) {
+	// Real-world case found by the corpus compatibility scan (backlog item
+	// 005): a zero-length "copy" sprite (Length == 0, inheriting its pixel
+	// data from the immediately preceding entry per resolveV1Pixels/decision
+	// 011) is not necessarily marked SharedPalette — the reference decoder
+	// (Ikemen-GO's Sff.read, confirmed against its own source) never reads a
+	// palette block for a zero-length entry regardless of that bit; it always
+	// inherits from the same predecessor the pixel data comes from. Modeling
+	// the old rule (SharedPalette alone decides) treated this as "must own a
+	// 768-byte block", which a zero-length entry can never satisfy.
+	table := &V1SpriteTable{Sprites: []V1SpriteEntry{
+		{Offset: 100, Length: 20 + V1PaletteBlockSize, Group: 3, Image: 1, SharedPalette: false}, // sprite 0: owns
+		{Offset: 0, Length: 0, Group: 3, Image: 2, SharedPalette: false},                         // sprite 1: zero-length copy, NOT marked shared
+	}}
+	data := make([]byte, 100+20+V1PaletteBlockSize)
+	block := buildV1PaletteBlock()
+	copy(data[100+20:100+20+V1PaletteBlockSize], block)
+
+	got, err := ResolveV1Palette(table, bytes.NewReader(data), 1, nil)
+	if err != nil {
+		t.Fatalf("ResolveV1Palette: unexpected error: %v", err)
+	}
+	want, _ := DecodeV1Palette(block)
+	if got != want {
+		t.Fatalf("got %v, want %v (sprite 0's inherited palette)", got[0], want[0])
+	}
+}
+
 func TestResolveV1Palette_IndexOutOfRange_ReturnsError(t *testing.T) {
 	table, data := buildV1TableAndData([]v1TestEntry{
 		{offset: 100, pixelLen: 20, sharedPalette: false},

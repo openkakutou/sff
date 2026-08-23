@@ -103,6 +103,15 @@ func DecodeV1Palette(data []byte) (Palette, error) {
 // always decodes its own block regardless of its own SharedPalette bit —
 // there is no earlier sprite for it to inherit from.
 //
+// A zero-length entry (Length == 0 — a "copy" sprite with no pixel data of
+// its own either, see resolveV1Pixels) always inherits the immediately
+// preceding sprite's resolved palette instead, regardless of its own
+// SharedPalette bit or (Group, Image): confirmed against the reference
+// decoder's own source, which never reads a palette block for a
+// zero-length entry — real corpus files carry zero-length entries not
+// explicitly marked SharedPalette, which the SharedPalette-only rule above
+// would wrongly treat as required to own a full embedded block.
+//
 // An owning sprite's embedded block is read via r from the last
 // V1PaletteBlockSize bytes of its own declared [Offset, Offset+Length)
 // span, not a suffix starting right after it: a v1 sprite's declared
@@ -127,6 +136,10 @@ func ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Pale
 func resolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int) (Palette, error) {
 	e := table.Sprites[i]
 
+	if e.Length == 0 && i > 0 {
+		return resolveV1Palette(table, r, i-1)
+	}
+
 	if e.SharedPalette && i > 0 {
 		if e.Group == 0 && e.Image == 0 {
 			return resolveV1Palette(table, r, 0)
@@ -135,6 +148,17 @@ func resolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int) (Palette, erro
 	}
 
 	if int64(e.Length) < V1PaletteBlockSize {
+		if e.SharedPalette {
+			// SharedPalette true means this sprite claims to inherit an
+			// already-resolved palette rather than decode its own — with no
+			// earlier sprite left to inherit from (i == 0, the only way
+			// execution reaches here with SharedPalette true), there is no
+			// embedded block to read either way. The reference decoder
+			// (Ikemen-GO) hands such a sprite a fresh, empty palette bank
+			// instead of failing — matches real corpus files whose sprite 0
+			// is marked shared but carries no real embedded data.
+			return Palette{}, nil
+		}
 		return Palette{}, fmt.Errorf("sff: v1 palette: sprite %d: declared length %d is smaller than the %d-byte palette block it must contain", i, e.Length, V1PaletteBlockSize)
 	}
 	block := make([]byte, V1PaletteBlockSize)

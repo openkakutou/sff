@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Decoding is now validated against a large corpus of real MUGEN/Ikemen GO character sprite sheets (99.995% of attempted sprites decode correctly), and two real-file decoding bugs this uncovered are fixed: certain sprites that reuse an earlier sprite's palette no longer fail to load.
+
 ## [0.2.0] - 2026-08-09
 
 ### Added
