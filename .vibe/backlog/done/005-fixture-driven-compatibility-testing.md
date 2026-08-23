@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 depends_on: [001]
 ---
 # Fixture-Driven Compatibility Testing (MUGEN + Ikemen GO)
