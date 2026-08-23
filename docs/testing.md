@@ -12,11 +12,12 @@ go test ./...
 
 Tests are co-located with source (`*_test.go` per source file), one test file per source file, named `Test<Subject>_<Expectation>`.
 
-Three layers of coverage:
+Four layers of coverage:
 
 1. **Unit tests per file** (`v1_test.go`, `v2_test.go`, `pcx_test.go`, `v2_decoder_test.go`, `palette_test.go`, `sprite_test.go`, `load_test.go`, `resolve_sprite_test.go`) — nominal path, boundary/edge cases, and malformed-input error paths for each parser/decoder/encoder function.
 2. **Round-trip tests for write-path code** (`v1_serializer_test.go`, `v2_serializer_test.go`, `pcx_encoder_test.go`, `v2_encoder_test.go`) — serialize → re-parse → re-decode → compare. Round trips are semantic, not byte-exact: `.sff` is a binary format with no diff-friendliness benefit to preserving an original file's exact layout.
 3. **Fixture-driven compatibility tests** (`testdata_test.go`, `v1_fixtures_test.go`) — decode real, vendored `.sff` fixtures under `testdata/files` and compare the fully resolved pixel output against real reference PNGs under `testdata/sprites`, produced by an independent reference decoder. This layer exists because synthetic/hand-built test data has repeatedly missed real-file decoding bugs during this package's development (see `testdata/README.md` and the package's own doc comments for specific bugs it caught).
+4. **Large-scale corpus compatibility scan** (`corpus_compat_test.go`, `TestCorpusCompat_RealSFFFiles_DecodeSuccessRate`) — decodes every sprite in every `.sff` file under a local, machine-specific corpus (see "Fixture corpus" below), reporting a decode success rate and failing loudly on any error that isn't an already-documented, named known gap. Skipped by default (gated on the `SFF_CORPUS_DIR` environment variable), so it never runs in CI or without that corpus present; run manually to validate against real-world scale before trusting a decoding change. This is where the two `resolveV1Palette` inheritance-rule bugs fixed in `.vibe/decisions/015` were found — see `.vibe/fixture-sources.md` for the latest run's results and any documented remaining gaps.
 
 ## Fixture corpus
 
@@ -26,7 +27,15 @@ Three layers of coverage:
 SRC_DIR=/path/to/sff-extractor/tests/files go run ./testdata/gen
 ```
 
-See `testdata/README.md` for the exact upstream source and what each fixture exercises. No local, machine-specific fixture corpus path is ever hardcoded into source, tests, or committed config.
+See `testdata/README.md` for the exact upstream source and what each fixture exercises.
+
+Separately, `TestCorpusCompat_RealSFFFiles_DecodeSuccessRate` (layer 4 above) reads from a different, much larger local corpus — a real Ikemen GO character install, not vendored or downloadable — pointed to via its own environment variable:
+
+```sh
+SFF_CORPUS_DIR=/path/to/real/character/files go test -run TestCorpusCompat_RealSFFFiles_DecodeSuccessRate -v .
+```
+
+See `.vibe/fixture-sources.md`'s "Local real-character corpus" section for where this corpus comes from. No local, machine-specific fixture corpus path is ever hardcoded into source, tests, or committed config.
 
 ## Lint
 

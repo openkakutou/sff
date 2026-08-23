@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-24
+
 ### Added
 
 - Decoding is now validated against a large corpus of real MUGEN/Ikemen GO character sprite sheets (99.995% of attempted sprites decode correctly), and two real-file decoding bugs this uncovered are fixed: certain sprites that reuse an earlier sprite's palette no longer fail to load.
@@ -23,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Palette colors can now be edited and saved back for both v1 and v2 sprite files, and exported as a standalone `.act` palette file compatible with other MUGEN/Ikemen GO tools. Editing a color with an out-of-range value (outside 0-255) is rejected with a descriptive error instead of being silently corrupted.
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
-[Unreleased]: https://github.com/openkakutou/sff/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/openkakutou/sff/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/openkakutou/sff/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/openkakutou/sff/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/openkakutou/sff/releases/tag/v0.1.0
