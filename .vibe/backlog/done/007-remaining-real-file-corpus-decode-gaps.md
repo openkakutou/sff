@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 depends_on: [005]
 ---
 # Remaining Real-File Corpus Decode Gaps
