@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-02
+
 ### Fixed
 
 - Fixed two more real-file decoding bugs found by the large real-file compatibility scan: a character sheet's last sprite could fail to load entirely when it reused an earlier sprite's palette, and legitimate extreme-aspect-ratio sprites (very wide and short, or very tall and narrow) were rejected as implausibly large. The handful of remaining, individually-confirmed corrupt or unsupported real files are now clearly and permanently documented rather than silently retried.
@@ -29,7 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Palette colors can now be edited and saved back for both v1 and v2 sprite files, and exported as a standalone `.act` palette file compatible with other MUGEN/Ikemen GO tools. Editing a color with an out-of-range value (outside 0-255) is rejected with a descriptive error instead of being silently corrupted.
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
-[Unreleased]: https://github.com/openkakutou/sff/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/openkakutou/sff/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/openkakutou/sff/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/openkakutou/sff/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/openkakutou/sff/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/openkakutou/sff/releases/tag/v0.1.0
