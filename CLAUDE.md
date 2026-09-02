@@ -18,9 +18,10 @@ English — all documentation, backlog items, code comments, and other generated
 
 This repo is a **shared, domain-independent dependency** of the OpenKakutou org (github.com/openkakutou) — it belongs to no single domain. Its consumers:
 
-- `character` — depends on it for character sprite sheets (migrating off its internal `sff/` package, see `character`'s backlog item 035)
-- `stage` — depends on it for stage background sprite sheets
-- `lifebar-viewer-web` / `lifebar-editor` — depend on it (via the WASM build) for lifebar element sprites
+- `character` — depends on it (Go module) for character sprite sheets (migrating off its internal `sff/` package, see `character`'s backlog item 035)
+- `stage` — depends on it (Go module) for stage background sprite sheets
+- `lifebar-viewer-web` / `lifebar-editor` — depend on it (via the WASM build, directly — lifebar has no dedicated Go library of its own) for lifebar element sprites
+- `stage-viewer-web` / `stage-editor` — also depend on it (via the WASM build, *in addition to* `stage`'s own WASM build) for validating a BG element's sprite reference against the loaded sheet
 
 Consumers must depend on this repo directly, never on `character`, for sprite handling. The scope is exactly the current `character/sff` package's scope, unchanged: `.sff` v1/v2 parse/serialize and palette resolution including `.act` overrides.
 
@@ -35,6 +36,19 @@ Compatibility target (org-wide convention): MUGEN 1.0/1.1 **and** Ikemen GO, val
 3. **Domain-independent.** Nothing character-, stage-, or lifebar-specific may leak into this repo — it handles the `.sff` file format and palettes, period. If a consumer needs something domain-shaped, it belongs in that consumer.
 
 4. **Real-file compatibility over spec purity.** `.sff` compatibility is hard-won through fixture-driven testing against real, unmodified community files (a practice inherited from `character` — see its `.vibe/fixture-sources.md`). Local machine-specific fixture corpus paths must never be hardcoded into source, tests, or committed config; trimmed fixtures get vendored into `testdata/` instead.
+
+## Release propagation <!-- keep -->
+
+This repo is consumed two different ways — a Go module import (`go.mod`) by other Go libraries, and a downloaded WASM build (`sff.wasm` + `wasm_exec.js`) by web apps that need it directly, not just transitively through `character`/`stage`. Both are **exact pins**, propagated by this repo's own release step — no scheduled job, no floating version. See `roadmap`'s `.vibe/decisions/016-wasm-version-pinning-push-based-propagation.md` and `.vibe/decisions/025-generalize-pin-propagation-to-go-module-dependencies.md` (the latter extends `016`'s WASM-only policy to Go module pins too, after this exact kind of staleness went unnoticed for both mechanisms at once).
+
+**After `/vibe:release` tags a new version here**, as a follow-up in the same session, for **every** known consumer below (check `roadmap/repos.md` and this list if it may be stale):
+
+- **Go module consumers** (`character`, `stage` — each requires `github.com/openkakutou/sff` in its own `go.mod`): `go get github.com/openkakutou/sff@vX.Y.Z && go mod tidy` in that repo, run its test suite, commit (`chore: bump sff to vX.Y.Z`) and push if green. A dependency-only bump with no behavior change visible in *that* repo's own tests does not by itself require a new release there — but if it does cut one (e.g. because the sff fix is worth surfacing to that repo's own downstream WASM consumers), continue the chain into that repo's own propagation section next.
+- **WASM download consumers** (`lifebar-viewer-web`, `lifebar-editor` — pin this repo's own WASM build directly as their only sprite dependency; `stage-viewer-web`, `stage-editor` — pin it *in addition to* `stage`'s own WASM build, for sprite-reference validation): open each, read its `CLAUDE.md`'s WASM-dependency section for the exact pin location (`.github/workflows/deploy-pages.yml`, plus the illustrative version number in `README.md`/`docs/development.md`), bump it, re-download the real build, run that consumer's own test suite, and commit/push if green.
+
+If bumping breaks a consumer's tests: stop, do **not** force the bump through, and flag the incompatibility to the user instead — it means this release has a breaking change for that consumer.
+
+Skip this if the release has no user-visible/behavioral change consumers would care about (e.g. docs-only, internal refactor with no CHANGELOG entry).
 
 ## Architecture
 
