@@ -75,6 +75,34 @@ func main() {
 		{"v2-loadmode1.sff", "kazuki-v2.sff", 2, 3096, 14},
 	}
 
+	trailingBlockScenarios := []trailingBlockScenario{
+		// backlog item 007: a real v1 file's *last* sprite that owns real
+		// pixel data (SharedPalette true here) can still carry a trailing,
+		// unused 768-byte block after its declared pixel data — same size
+		// as the palette block a SharedPalette-false sprite's Length
+		// already accounts for, just never subtracted for the shared case.
+		// See .vibe/decisions/017-v1-last-shared-palette-sprite-trailing-block.md.
+		{"v1-last-sprite-shared-palette-trailing-block.sff", "ending.sff", 21, 0},
+	}
+	for _, sc := range trailingBlockScenarios {
+		srcPath := filepath.Join(srcDir, sc.src)
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v (skipping)\n", sc.name, err)
+			continue
+		}
+		out, err := trimV1TrailingBlock(data, sc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", sc.name, err)
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(outDir, sc.name), out, 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: writing: %v\n", sc.name, err)
+			continue
+		}
+		fmt.Printf("%s: %d bytes (from %d)\n", sc.name, len(out), len(data))
+	}
+
 	for _, sc := range scenarios {
 		srcPath := filepath.Join(srcDir, sc.src)
 		data, err := os.ReadFile(srcPath)
@@ -293,6 +321,96 @@ type v1Sprite struct {
 	shared                     bool
 	pixel                      []byte
 	palette                    []byte
+	// overstateLengthBy adds to the declared Length without writing any
+	// extra bytes on disk, regardless of shared — used only by
+	// trimV1TrailingBlock to reproduce backlog item 007's real-file shape:
+	// a v1 file's last sprite that owns real pixel data (SharedPalette
+	// true) can declare a Length up to 768 bytes *more* than what the file
+	// actually contains past its own offset — the file simply ends there,
+	// no phantom bytes exist to copy. A regular (non-shared) sprite's own
+	// trailing palette block is real, on-disk data; this is a distinct,
+	// purely-declarative overstatement, never realized as bytes.
+	overstateLengthBy int
+}
+
+// trailingBlockScenario describes a fixture reproducing backlog item 007's
+// "last shared-palette sprite declares 768 bytes more than the file
+// actually has" real-file shape — a distinct trim shape from
+// scenario/trimV1, whose declared Length always matches real bytes present.
+type trailingBlockScenario struct {
+	name       string
+	src        string
+	group      int
+	nthInGroup int
+}
+
+// trimV1TrailingBlock builds a minimal, real-bytes-only .sff v1 file
+// reproducing sc's target sprite's real shape: its true pixel bytes (real,
+// copied verbatim), but with its declared Length deliberately overstated
+// by 768 bytes — exactly reproducing the real source file's own
+// characteristic, not inventing a novel corruption. The target is expected
+// to be the source file's own last sprite that owns real pixel data
+// (Length > 0, SharedPalette true); a donor entry supplying its real
+// inherited palette is included when it shares one (mirroring trimV1's own
+// donor-collapse rule).
+func trimV1TrailingBlock(data []byte, sc trailingBlockScenario) ([]byte, error) {
+	table, err := sff.ParseV1(readerAt(data))
+	if err != nil {
+		return nil, err
+	}
+
+	idx, err := resolveGroupV1(table, sc.group, sc.nthInGroup)
+	if err != nil {
+		return nil, err
+	}
+	target := table.Sprites[idx]
+	if target.Length == 0 {
+		return nil, fmt.Errorf("target sprite %d has no pixel data of its own", idx)
+	}
+	if !target.SharedPalette {
+		return nil, fmt.Errorf("target sprite %d: this scenario needs a SharedPalette sprite (its own 768-byte overstatement is otherwise already legitimate palette-block data)", idx)
+	}
+
+	const overstateBy = 768
+	realPixelLen := target.Length - overstateBy
+	if realPixelLen <= 0 {
+		return nil, fmt.Errorf("target sprite %d: declared length %d too small to overstate by %d", idx, target.Length, overstateBy)
+	}
+	if target.Offset+int64(realPixelLen) > int64(len(data)) {
+		return nil, fmt.Errorf("target sprite %d: real pixel span still exceeds source file length", idx)
+	}
+	realPixel := data[target.Offset : target.Offset+int64(realPixelLen)]
+
+	var sprites []v1Sprite
+	paletteOwner := resolvePaletteOwnerV1(table, idx)
+	if paletteOwner != idx {
+		pal, err := findOwnPalette(table, data, idx)
+		if err != nil {
+			return nil, err
+		}
+		pe := table.Sprites[paletteOwner]
+		pixelOwner, err := resolvePixelOwnerV1(table, paletteOwner)
+		if err != nil {
+			return nil, err
+		}
+		ppe := table.Sprites[pixelOwner]
+		sprites = append(sprites, v1Sprite{
+			group: pe.Group, image: pe.Image, axisX: pe.AxisX, axisY: pe.AxisY,
+			linkedIndex: -1, shared: false,
+			pixel:   data[ppe.Offset : ppe.Offset+int64(ownPixelLength(table, pixelOwner))],
+			palette: pal,
+		})
+	}
+
+	sprites = append(sprites, v1Sprite{
+		group: target.Group, image: target.Image, axisX: target.AxisX, axisY: target.AxisY,
+		linkedIndex:       -1,
+		shared:            true,
+		pixel:             realPixel,
+		overstateLengthBy: overstateBy,
+	})
+
+	return encodeV1(table.Header, sprites)
 }
 
 // encodeV1 hand-writes a minimal, valid .sff v1 file: a 512-byte header
@@ -323,6 +441,9 @@ func encodeV1(h sff.V1Header, sprites []v1Sprite) ([]byte, error) {
 		if !s.shared {
 			pos += len(s.palette)
 		}
+		// overstateLengthBy deliberately does NOT advance pos: no bytes are
+		// actually written for it (see v1Sprite's own doc comment) — the
+		// next entry's real on-disk position is unaffected.
 	}
 
 	for i, s := range sprites {
@@ -333,7 +454,10 @@ func encodeV1(h sff.V1Header, sprites []v1Sprite) ([]byte, error) {
 		// A non-shared entry's declared Length includes its own trailing
 		// palette block, matching real files — see
 		// .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
-		length := len(s.pixel)
+		// overstateLengthBy (trimV1TrailingBlock only) adds to the
+		// *declared* value only, reproducing a real file's own Length
+		// field overstating what's actually present.
+		length := len(s.pixel) + s.overstateLengthBy
 		if !s.shared {
 			length += len(s.palette)
 		}

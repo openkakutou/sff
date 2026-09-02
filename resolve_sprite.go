@@ -140,13 +140,26 @@ func directColorPixelsToRGBA(img *V2Image) []color.RGBA {
 	return out
 }
 
-// checkSpriteDimensions rejects a declared sprite size beyond
-// SpritePixelDimensionLimit per axis, so a corrupt or adversarial file
-// produces a reported error instead of an attempt to allocate an
-// implausibly large pixel buffer.
+// checkSpriteDimensions rejects a declared sprite size whose total pixel
+// area exceeds SpritePixelDimensionLimit squared, so a corrupt or
+// adversarial file produces a reported error instead of an attempt to
+// allocate an implausibly large pixel buffer.
+//
+// Area-based, not per-axis: a real-file corpus scan (backlog item 007)
+// found legitimate MUGEN/Ikemen sprites with one axis far beyond
+// SpritePixelDimensionLimit but a tiny other axis — extreme-aspect-ratio
+// "filmstrip" sprites (e.g. 17637x249), not corrupt data — that a per-axis
+// check rejected outright even though their total pixel count is a small
+// fraction of what SpritePixelDimensionLimit x SpritePixelDimensionLimit
+// already allows. The guarantee this function exists for (bounding the
+// buffer ResolveSpritePixels allocates) only ever depended on total area,
+// never on either axis independently, so tightening one dimension while
+// loosening the other preserves the exact same worst-case allocation size.
+// See .vibe/decisions/016-sprite-dimension-limit-is-area-based-not-per-axis.md.
 func checkSpriteDimensions(width, height int) error {
-	if width > SpritePixelDimensionLimit || height > SpritePixelDimensionLimit {
-		return fmt.Errorf("sff: declared sprite size %dx%d exceeds the %dx%d limit", width, height, SpritePixelDimensionLimit, SpritePixelDimensionLimit)
+	const maxArea = int64(SpritePixelDimensionLimit) * int64(SpritePixelDimensionLimit)
+	if int64(width)*int64(height) > maxArea {
+		return fmt.Errorf("sff: declared sprite size %dx%d exceeds the %d-pixel area limit (%dx%d)", width, height, maxArea, SpritePixelDimensionLimit, SpritePixelDimensionLimit)
 	}
 	return nil
 }

@@ -142,6 +142,77 @@ func TestLoad_V1LinkedSprite_ResolvesDimensionsFromLinkTarget(t *testing.T) {
 // inherits the immediately preceding table entry (never its own
 // LinkedIndex), so every resolution step strictly decreases the index and
 // can never cycle back on itself.
+// TestResolveV1Pixels_LastSharedPaletteSpriteOverstatesLength_DecodesAnyway
+// covers a real-file shape found by backlog item 007's corpus scan (17
+// sprites across 7 real character files, e.g. Marvel's Thor and the
+// bundled Kung Fu Man's own ending/intro sheets): a v1 file's last sprite
+// that owns real pixel data can declare a Length up to 768 bytes more than
+// the file actually has left to give — the file simply ends there. Since
+// this only happens on a SharedPalette sprite, and a SharedPalette-false
+// sprite's declared Length already legitimately includes its own trailing
+// 768-byte palette block, the fix mirrors that: retry once without those
+// 768 bytes when the full declared read overruns the underlying reader.
+// See .vibe/decisions/017-v1-last-shared-palette-sprite-trailing-block.md.
+func TestResolveV1Pixels_LastSharedPaletteSpriteOverstatesLength_DecodesAnyway(t *testing.T) {
+	f := openTestdataFile(t, "v1-last-sprite-shared-palette-trailing-block.sff")
+	defer f.Close()
+
+	table, err := ParseV1(f)
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	last := len(table.Sprites) - 1
+	target := table.Sprites[last]
+	if !target.SharedPalette || target.Length == 0 {
+		t.Fatalf("test fixture assumption broken: last entry must be a real, SharedPalette sprite, got %+v", target)
+	}
+
+	img, err := ResolveV1Pixels(table, f, last)
+	if err != nil {
+		t.Fatalf("ResolveV1Pixels: expected the overstated length to be tolerated, got error: %v", err)
+	}
+	if img.Width <= 0 || img.Height <= 0 {
+		t.Errorf("expected a real decoded image, got %dx%d", img.Width, img.Height)
+	}
+	if len(img.Pixels) != img.Width*img.Height {
+		t.Errorf("expected %d pixels (%dx%d), got %d", img.Width*img.Height, img.Width, img.Height, len(img.Pixels))
+	}
+}
+
+// TestResolveV1Pixels_NonSharedSpriteEOF_StillReturnsError confirms the
+// retry above is scoped to SharedPalette sprites only: a SharedPalette-
+// false sprite whose declared Length already overruns the reader is a
+// different, still-undiagnosed real-file shape (backlog item 007's other
+// remaining gap) and must keep erroring rather than silently trying yet
+// another guessed length.
+func TestResolveV1Pixels_NonSharedSpriteEOF_StillReturnsError(t *testing.T) {
+	sprites := []V1WriteSprite{
+		{
+			Group: 0, Image: 0, SharedPalette: false,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 2, Pixels: []byte{1, 1, 1, 1}}),
+			Palette:   v1TestPalette(),
+		},
+	}
+	var buf bytes.Buffer
+	if err := SerializeV1(&buf, [4]byte{1, 0, 0, 1}, false, sprites); err != nil {
+		t.Fatalf("test setup: SerializeV1 failed: %v", err)
+	}
+	full := buf.Bytes()
+
+	table, err := ParseV1(bytes.NewReader(full))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	// Truncate right after the sprite's own pixel-data offset, well short
+	// of its declared (palette-block-inclusive) Length, so the read of
+	// its actual pixel data — not just its trailing palette block — fails.
+	truncated := full[:table.Sprites[0].Offset+1]
+
+	if _, err := ResolveV1Pixels(table, bytes.NewReader(truncated), 0); err == nil {
+		t.Fatal("expected an error for a truncated non-shared sprite, got nil")
+	}
+}
+
 func TestLoad_V1FirstSpriteHasNoPixelDataOfItsOwn_ReturnsDescriptiveError(t *testing.T) {
 	sprites := []V1WriteSprite{
 		// index 0: no PixelData; SerializeV1 requires a valid (in-range,

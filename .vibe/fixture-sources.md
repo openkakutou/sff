@@ -83,37 +83,45 @@ visually. Not yet acted on — a good candidate for a follow-up backlog
 item once a character with a full `standN.gif` set is trimmed into
 `testdata/`.
 
-## Corpus compatibility scan results (backlog item 005, 2026-08-23)
+## Corpus compatibility scan results (backlog items 005 and 007, last run 2026-09-02)
 
 `TestCorpusCompat_RealSFFFiles_DecodeSuccessRate` (`corpus_compat_test.go`,
-gated on the `SFF_CORPUS_DIR` env var — never run by default) scanned the
+gated on the `SFF_CORPUS_DIR` env var — never run by default) scans the
 full local corpus above: **562 files, 674,710 sprites**.
 
-- **665,265 decoded successfully (98.6% of all sprites declared).**
+- **665,284 decoded successfully (98.6% of all sprites declared).**
 - **9,414 sprites (1.4%)** hit the already-documented, accepted gap: v2
   sprites that share rather than own their pixel data (see
   `resolveSpritePixelsV2`'s own doc comment in `resolve_sprite.go`) — not
   counted as failures.
-- **Excluding that gap, 665,265 / 665,296 attempted decodes succeeded
-  (99.995%).**
-- Two real bugs this scan found in `resolveV1Palette`'s inheritance rule
-  were fixed as part of item 005 (closing 4,133 sprites' worth of
-  failures) — see `.vibe/decisions/015-v1-zero-length-sprite-palette-inheritance-corrected.md`.
+- **12 sprites (0.0018%)** hit one of two other named, accepted gaps — see
+  below.
+- **0 undocumented failures.** Every sprite in the corpus either decodes or
+  hits an explicit, named exception.
+- Item 005 found and fixed two real bugs in `resolveV1Palette`'s
+  inheritance rule (closing 4,133 sprites' worth of failures) — see
+  `.vibe/decisions/015-v1-zero-length-sprite-palette-inheritance-corrected.md`.
+- Item 007 triaged the 31 failures item 005 left undiagnosed, fixing two
+  more real bugs (closing 19 sprites' worth of failures) and permanently
+  documenting the remaining 12:
+  - **17 sprites, 7 files** (`reading pixel data: EOF`) — a v1 file's last
+    sprite that owns real pixel data could declare a `Length` up to 768
+    bytes more than the file actually has, when `SharedPalette` is `true`.
+    Fixed — see
+    `.vibe/decisions/017-v1-last-shared-palette-sprite-trailing-block.md`.
+  - **2 sprites** (`Supergirl` 17637×249, `SatanZ2` 9979×24) — legitimate
+    extreme-aspect-ratio sprites `SpritePixelDimensionLimit`'s old
+    per-axis check rejected. Fixed by making the check area-based — see
+    `.vibe/decisions/016-sprite-dimension-limit-is-area-based-not-per-axis.md`.
 
-### Remaining 31 failures — documented, accepted gaps (not fixed by item 005)
+### Remaining 12 failures — permanent, named accepted gaps (backlog item 007)
 
-Each is real, low-volume (31 / 674,710 = 0.0046%), and outside this
-item's scope — triaged rather than silently ignored, tracked for
-follow-up work:
+Registered individually in `corpus_compat_test.go`'s `acceptedCorpusGaps`
+(by real file path + group/image), not fixed — see
+`.vibe/decisions/018-pcx-3-plane-and-confirmed-corrupt-files-are-permanent-gaps.md`
+for the full reasoning:
 
 | Shape | Count | Files | Notes |
 |---|---|---|---|
-| `sff: pcx: unsupported color plane count 3, only 1 is supported` | 9 | 7 files (`Green Lantern`, `Daredevil` ×2, `Donkey Kong SD` ×2, `Snorlax`, `Sailor Neptune`, `sf4omni`) | A 3-plane (24-bit RGB) PCX sprite — this decoder only supports the 1-plane (8-bit indexed) PCX MUGEN sprites normally use. Likely a portrait/special-purpose image exported as truecolor rather than indexed; needs its own decode path (or a documented permanent scope cut, mirroring the v2 linked-sprite gap) to resolve. |
-| `reading pixel data: EOF` | 16 | 8 files (`Thor` alone accounts for 10) | The declared `[Offset, Offset+Length)` span reads past the actual file's end. Root cause not yet diagnosed — could be a real corrupted/truncated file in this corpus, or a genuine offset/length computation bug for a specific v1 table shape (all 16 are v1). Needs a minimal repro trimmed from one of these files to investigate further. |
-| `sff: v1 palette: sprite N: declared length M is smaller than the 768-byte palette block it must contain` (`SharedPalette: false`) | 3 | `Darkstalkers/Anita`, `Doctor Strange`, `Donkey Kong SD` | Unlike the two shapes fixed in decision `015`, these sprites explicitly claim to own their palette (`SharedPalette` false) yet declare too little data for one — a genuine defect in these specific files (or a still-undiscovered third inheritance rule). Left as an error rather than guessed at. |
-| `sff: declared sprite size WxH exceeds the 4096x4096 limit` | 2 | `Supergirl` (17637×249), `SatanZ2` (9979×24) | `SpritePixelDimensionLimit` (see `resolve_sprite.go`) is tuned for "typical" sprites, well under 1024×1024 per axis; these are extreme-aspect-ratio strips (very wide, short) that may be entirely legitimate (e.g. a filmstrip-style sheet) rather than corrupt. Worth revisiting whether the limit should be axis-aware or simply raised. |
-| `sff: pcx: truncated RLE run at row 225: missing value byte` | 1 | `Dragon Ball/Yamcha` | A single real file with an apparently genuinely truncated/corrupt RLE stream — likely a legitimately damaged source file, not a decoder bug. |
-
-Tracked as a follow-up backlog item rather than fixed here, to keep this
-item's scope to establishing the practice plus the two clear, well-
-understood bugs it surfaced.
+| `sff: pcx: unsupported color plane count 3, only 1 is supported` (`pcx3PlaneGapName`) | 8 | 6 files (`Green Lantern`, `Daredevil` ×2, `Donkey Kong SD` ×2, `Snorlax`, `Sailor Neptune`, `sf4omni`) | A 3-plane (24-bit RGB) PCX sprite — this decoder only supports the 1-plane (8-bit indexed) PCX MUGEN sprites normally use. Permanent scope cut, mirroring the v2 linked-sprite gap. |
+| `sff: v1 palette: sprite N: declared length M is smaller than the 768-byte palette block it must contain` (`SharedPalette: false`) and `sff: pcx: truncated RLE run at row 225: missing value byte` (`corruptSourceFileGapName`) | 4 | `Darkstalkers/Anita`, `Doctor Strange`, `Donkey Kong SD`, `Dragon Ball/Yamcha` | Each file's own declared layout is confirmed internally inconsistent (a `SharedPalette: false` sprite whose neighboring subheader position leaves genuinely too little room for its own mandatory palette block, or a PCX RLE stream that terminates mid-row) — real, individually-confirmed corrupt/malformed source data, not a decoder defect. |

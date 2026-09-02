@@ -203,6 +203,14 @@ func TestResolveSpritePixels_V2LinkedSpriteNotYetSupported(t *testing.T) {
 // reachable directly from untrusted caller-supplied bytes via the WASM
 // boundary — see
 // .vibe/decisions/013-wasm-sprite-pixel-resolution-batched-stateless-contract.md).
+// The bound is on total pixel *area* (width*height), not either axis
+// independently — see
+// .vibe/decisions/016-sprite-dimension-limit-is-area-based-not-per-axis.md:
+// a real corpus scan (backlog item 007) found legitimate extreme-aspect-
+// ratio "filmstrip" sprites (one axis far beyond SpritePixelDimensionLimit,
+// total area well under it) that a per-axis check rejected outright, while
+// the memory-safety guarantee this function exists for (bounding the pixel
+// buffer ResolveSpritePixels allocates) only ever depended on area.
 func TestCheckSpriteDimensions(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -212,8 +220,13 @@ func TestCheckSpriteDimensions(t *testing.T) {
 		{"Zero", 0, 0, false},
 		{"TypicalSprite", 200, 300, false},
 		{"AtLimit", SpritePixelDimensionLimit, SpritePixelDimensionLimit, false},
-		{"WidthBeyondLimit", SpritePixelDimensionLimit + 1, 10, true},
-		{"HeightBeyondLimit", 10, SpritePixelDimensionLimit + 1, true},
+		{"OneAxisOverLimitButAreaWithinBound", SpritePixelDimensionLimit + 1, 1, false},
+		{"AreaJustOverLimit", SpritePixelDimensionLimit, SpritePixelDimensionLimit + 1, true},
+		{"BothAxesHuge", SpritePixelDimensionLimit * 2, SpritePixelDimensionLimit * 2, true},
+		// Real corpus sprites (backlog item 007), exact declared dimensions:
+		// legitimate filmstrip-shaped sprites, not corrupt.
+		{"RealCorpusSupergirlFilmstrip", 17637, 249, false},
+		{"RealCorpusSatanZ2Filmstrip", 9979, 24, false},
 	}
 
 	for _, c := range cases {

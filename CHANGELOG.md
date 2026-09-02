@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed two more real-file decoding bugs found by the large real-file compatibility scan: a character sheet's last sprite could fail to load entirely when it reused an earlier sprite's palette, and legitimate extreme-aspect-ratio sprites (very wide and short, or very tall and narrow) were rejected as implausibly large. The handful of remaining, individually-confirmed corrupt or unsupported real files are now clearly and permanently documented rather than silently retried.
+
 ## [0.3.0] - 2026-08-24
 
 ### Added

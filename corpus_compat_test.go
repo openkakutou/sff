@@ -25,19 +25,33 @@ const sffCorpusDirEnv = "SFF_CORPUS_DIR"
 // zero-Length v2 entry as this gap rather than a failure needing triage.
 const v2LinkedSpriteGapName = "v2 linked/shared sprite pixel data"
 
-// scanFileSprites parses f (path is used only for error messages) once and
-// attempts to decode every sprite it declares, mirroring the same
-// decode-then-resolve-palette logic ResolveSpritePixels applies per
-// sprite. Unlike calling that self-contained, one-sprite-at-a-time
-// function in a loop — which would re-parse the same sprite table from
-// scratch on every call, prohibitively slow for a real file with
-// thousands of sprites — this parses the table exactly once and reuses it
-// for every entry.
+// spriteFailure is one sprite's decode failure, structured rather than
+// pre-formatted, so a caller (the corpus scan below) can classify it
+// against acceptedCorpusGaps by (group, image) before deciding whether it
+// is a real, reportable failure.
+type spriteFailure struct {
+	Group, Image int
+	Err          error
+}
+
+func (f spriteFailure) String() string {
+	return fmt.Sprintf("(group %d, image %d): %v", f.Group, f.Image, f.Err)
+}
+
+// scanFileSprites parses f once and attempts to decode every sprite it
+// declares, mirroring the same decode-then-resolve-palette logic
+// ResolveSpritePixels applies per sprite. Unlike calling that self-
+// contained, one-sprite-at-a-time function in a loop — which would
+// re-parse the same sprite table from scratch on every call, prohibitively
+// slow for a real file with thousands of sprites — this parses the table
+// exactly once and reuses it for every entry.
 //
 // total is every sprite declared in the file; knownGaps counts entries
 // that hit v2LinkedSpriteGapName; failures describes every other decode
-// error, one line per sprite.
-func scanFileSprites(f io.ReaderAt, path string) (total int, knownGaps map[string]int, failures []string, err error) {
+// error, one per sprite. The caller (a specific file's path is only
+// meaningful to it) is responsible for turning a failure into a full
+// message.
+func scanFileSprites(f io.ReaderAt) (total int, knownGaps map[string]int, failures []spriteFailure, err error) {
 	isV2, err := detectVersion(f)
 	if err != nil {
 		return 0, nil, nil, err
@@ -56,7 +70,7 @@ func scanFileSprites(f io.ReaderAt, path string) (total int, knownGaps map[strin
 				continue
 			}
 			if err := decodeV2SpriteEntry(table, f, e); err != nil {
-				failures = append(failures, fmt.Sprintf("%s (group %d, image %d): %v", path, e.Group, e.Image, err))
+				failures = append(failures, spriteFailure{e.Group, e.Image, err})
 			}
 		}
 		return total, knownGaps, failures, nil
@@ -69,11 +83,11 @@ func scanFileSprites(f io.ReaderAt, path string) (total int, knownGaps map[strin
 	for i, e := range table.Sprites {
 		total++
 		if _, err := resolveV1Pixels(table, f, i, nil); err != nil {
-			failures = append(failures, fmt.Sprintf("%s (group %d, image %d): %v", path, e.Group, e.Image, err))
+			failures = append(failures, spriteFailure{e.Group, e.Image, err})
 			continue
 		}
 		if _, err := ResolveV1Palette(table, f, i, nil); err != nil {
-			failures = append(failures, fmt.Sprintf("%s (group %d, image %d): palette: %v", path, e.Group, e.Image, err))
+			failures = append(failures, spriteFailure{e.Group, e.Image, fmt.Errorf("palette: %w", err)})
 		}
 	}
 	return total, knownGaps, failures, nil
@@ -109,7 +123,7 @@ func TestScanFileSprites_V1Fixture_DecodesEverySpriteWithNoFailures(t *testing.T
 	f := openTestdataFile(t, "v1-basic.sff")
 	defer f.Close()
 
-	total, knownGaps, failures, err := scanFileSprites(f, "v1-basic.sff")
+	total, knownGaps, failures, err := scanFileSprites(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -128,7 +142,7 @@ func TestScanFileSprites_V2LinkedSpriteFixture_ClassifiesItAsAKnownGap(t *testin
 	f := openTestdataFile(t, "v2-zero-length-copy.sff")
 	defer f.Close()
 
-	total, knownGaps, failures, err := scanFileSprites(f, "v2-zero-length-copy.sff")
+	total, knownGaps, failures, err := scanFileSprites(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +168,7 @@ func TestScanFileSprites_MalformedFile_ReturnsError(t *testing.T) {
 	// fallback rather than an error — so this fixture alone doesn't force
 	// the file-level error path. Use a corrupt/truncated reader instead to
 	// exercise it directly.
-	_, _, _, err := scanFileSprites(&truncatedReaderAt{}, "truncated")
+	_, _, _, err := scanFileSprites(&truncatedReaderAt{})
 	if err == nil {
 		t.Fatal("expected an error for a file whose table cannot even be parsed")
 	}
@@ -169,12 +183,124 @@ func (truncatedReaderAt) ReadAt(_ []byte, _ int64) (int, error) {
 	return 0, fmt.Errorf("simulated truncated read")
 }
 
+// pcx3PlaneGapName and corruptSourceFileGapName label backlog item 007's
+// own two remaining, individually-diagnosed corpus gaps (see
+// .vibe/fixture-sources.md's "Corpus compatibility scan results" and
+// .vibe/decisions/018-pcx-3-plane-and-confirmed-corrupt-files-are-permanent-gaps.md):
+//   - pcx3PlaneGapName: a 3-plane (24-bit truecolor) PCX sprite — this
+//     decoder only ever supported the 1-plane (8-bit indexed) shape real
+//     MUGEN/Ikemen sprites normally use; a deliberate, permanent scope cut,
+//     the same kind of accepted gap v2LinkedSpriteGapName already is.
+//   - corruptSourceFileGapName: a specific real file whose declared data is
+//     internally inconsistent in a way no still-undiscovered inheritance
+//     or layout rule explains — confirmed corrupt/malformed source data,
+//     not a decoder defect.
+const (
+	pcx3PlaneGapName         = "PCX 3-plane (24-bit truecolor) sprite — unsupported, permanent scope cut"
+	corruptSourceFileGapName = "confirmed corrupt/inconsistent real source file"
+)
+
+// acceptedCorpusGap identifies one specific, already-diagnosed real-file
+// decode failure by the real character folder structure it lives under
+// (relPath, matched against each scanned file's path relative to the
+// corpus root via strings.HasSuffix — never the corpus's own machine-
+// specific absolute root) plus its (group, image) — precise identification
+// rather than a broad error-message pattern match, per this test's own
+// "explicit, named exception, never a silent pass/fail toggle" rule.
+type acceptedCorpusGap struct {
+	relPath      string
+	group, image int
+	gapName      string
+}
+
+var acceptedCorpusGaps = []acceptedCorpusGap{
+	{"DC Comics/Green Lantern/DCTemplate.sff", 9000, 11, pcx3PlaneGapName},
+	{"Marvel/Daredevil/DareDevil.sff", 9000, 11, pcx3PlaneGapName},
+	{"Marvel/Daredevil/DareDevil.sff", 7696, 1, pcx3PlaneGapName},
+	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 18, pcx3PlaneGapName},
+	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 19, pcx3PlaneGapName},
+	{"Pokemon/Snorlax/Snorlax.sff", 7000, 20, pcx3PlaneGapName},
+	{"Sailor Moon/Sailor Neptune/sailor_neptune.sff", 16780, 0, pcx3PlaneGapName},
+	{"Street Fighter/Omni (SF4)/sf4omni.sff", 3188, 21, pcx3PlaneGapName},
+
+	{"Dragon Ball/Yamcha/Yamcha.sff", 4000, 0, corruptSourceFileGapName},
+	{"Darkstalkers/Anita/backup/ANITA.sff", 200, 108, corruptSourceFileGapName},
+	{"Marvel/Doctor Strange/DoctorStrange.sff", 1314, 13, corruptSourceFileGapName},
+	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 20, corruptSourceFileGapName},
+}
+
+// matchAcceptedGap returns the gap name for a failure at relPath (a real
+// file path relative to the corpus root) and (group, image), if it matches
+// one of acceptedCorpusGaps.
+func matchAcceptedGap(relPath string, group, image int) (string, bool) {
+	relPath = filepath.ToSlash(relPath)
+	for _, g := range acceptedCorpusGaps {
+		if group == g.group && image == g.image && strings.HasSuffix(relPath, g.relPath) {
+			return g.gapName, true
+		}
+	}
+	return "", false
+}
+
+func TestMatchAcceptedGap(t *testing.T) {
+	cases := []struct {
+		name         string
+		relPath      string
+		group, image int
+		wantName     string
+		wantOK       bool
+	}{
+		{
+			name:    "matches a known gap by its full corpus-relative path",
+			relPath: "Marvel/Daredevil/DareDevil.sff",
+			group:   9000, image: 11,
+			wantName: pcx3PlaneGapName, wantOK: true,
+		},
+		{
+			name:    "matches when relPath carries extra leading corpus-root segments",
+			relPath: "DC/Marvel/Daredevil/DareDevil.sff",
+			group:   7696, image: 1,
+			wantName: pcx3PlaneGapName, wantOK: true,
+		},
+		{
+			name:    "does not match the right file with the wrong (group, image)",
+			relPath: "Marvel/Daredevil/DareDevil.sff",
+			group:   1, image: 1,
+			wantOK: false,
+		},
+		{
+			name:    "does not match an unrelated file even sharing a group/image pair",
+			relPath: "Someone/Else/DareDevil.sff",
+			group:   9000, image: 12,
+			wantOK: false,
+		},
+		{
+			name:    "distinguishes the two named gaps for the same file",
+			relPath: "Nintendo/Donkey Kong SD/common/sprites.sff",
+			group:   2000, image: 20,
+			wantName: corruptSourceFileGapName, wantOK: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotName, gotOK := matchAcceptedGap(c.relPath, c.group, c.image)
+			if gotOK != c.wantOK {
+				t.Fatalf("matchAcceptedGap(%q, %d, %d): ok = %v, want %v", c.relPath, c.group, c.image, gotOK, c.wantOK)
+			}
+			if gotOK && gotName != c.wantName {
+				t.Errorf("matchAcceptedGap(%q, %d, %d): name = %q, want %q", c.relPath, c.group, c.image, gotName, c.wantName)
+			}
+		})
+	}
+}
+
 // TestCorpusCompat_RealSFFFiles_DecodeSuccessRate is the fixture-driven
 // compatibility scan backlog item 005 asks for: every real, unmodified
 // .sff file under SFF_CORPUS_DIR is loaded and every sprite it declares is
 // decoded through the same decode+palette-resolve logic a consumer
-// (character, stage, lifebar-editor) relies on. Any failure that isn't
-// the one already-documented v2LinkedSpriteGapName fails the test loudly
+// (character, stage, lifebar-editor) relies on. Any failure that isn't one
+// of the already-documented, named gaps above fails the test loudly
 // instead of being silently ignored, so a corpus file that hits an
 // undocumented gap is caught here rather than shipping quietly broken.
 //
@@ -216,7 +342,7 @@ func TestCorpusCompat_RealSFFFiles_DecodeSuccessRate(t *testing.T) {
 			continue
 		}
 
-		n, fileGapCounts, fileFailures, err := scanFileSprites(f, path)
+		n, fileGapCounts, fileFailures, err := scanFileSprites(f)
 		f.Close()
 		if err != nil {
 			loadFailures = append(loadFailures, fmt.Sprintf("%s: %v", path, err))
@@ -228,8 +354,22 @@ func TestCorpusCompat_RealSFFFiles_DecodeSuccessRate(t *testing.T) {
 			knownGapCounts[gap] += c
 			gaps += c
 		}
-		decoded += n - len(fileFailures) - gaps
-		decodeFailures = append(decodeFailures, fileFailures...)
+
+		relPath, relErr := filepath.Rel(corpusDir, path)
+		if relErr != nil {
+			relPath = path
+		}
+		trueFailures := 0
+		for _, sf := range fileFailures {
+			if gapName, ok := matchAcceptedGap(relPath, sf.Group, sf.Image); ok {
+				knownGapCounts[gapName]++
+				gaps++
+				continue
+			}
+			trueFailures++
+			decodeFailures = append(decodeFailures, fmt.Sprintf("%s %s", path, sf))
+		}
+		decoded += n - trueFailures - gaps
 	}
 
 	successRate := 0.0

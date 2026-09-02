@@ -2,6 +2,7 @@ package sff
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -203,7 +204,27 @@ func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int, seen map[int]bo
 
 	raw := make([]byte, pixelLen)
 	if _, err := r.ReadAt(raw, e.Offset); err != nil {
-		return nil, fmt.Errorf("reading pixel data: %w", err)
+		// A SharedPalette sprite's declared Length can still, on some real
+		// files, overstate what's actually left in the file by exactly a
+		// palette block's worth of bytes — observed so far only on a
+		// file's last sprite that owns real pixel data (see backlog item
+		// 007's corpus scan). Retry once as if it were palette-block-
+		// inclusive, the same subtraction a SharedPalette-false sprite's
+		// Length already gets above, before giving up. See
+		// .vibe/decisions/017-v1-last-shared-palette-sprite-trailing-block.md.
+		if e.SharedPalette && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+			shorter := pixelLen - V1PaletteBlockSize
+			if shorter >= 0 {
+				raw2 := make([]byte, shorter)
+				if _, err2 := r.ReadAt(raw2, e.Offset); err2 == nil {
+					raw = raw2
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading pixel data: %w", err)
+		}
 	}
 	if w, h, ok := peekPCXDimensions(raw); ok && int64(w)*int64(h) >= v1MaxPixelCount {
 		return &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}}, nil

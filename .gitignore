@@ -11,6 +11,10 @@
 # Test binary, built with `go test -c`
 *.test
 
+# testdata/gen's own built binary, if `go build ./testdata/gen/...` (rather
+# than `go run`) is used to regenerate fixtures — never intentional output.
+/gen
+
 # WASM build output (GOOS=js GOARCH=wasm go build ./cmd/wasm) — built
 # locally or by the release workflow, never committed.
 *.wasm
