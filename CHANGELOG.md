@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-10
+
 ### Added
 
 - Corrupt or malicious sprite files can no longer make an app exhaust its memory: every declared image size, data length and sprite count is now checked against a safe limit and rejected with a clear error, while every real character file keeps loading as before. The readers are now covered by automated fuzz testing.
@@ -36,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
 [Unreleased]: https://github.com/openkakutou/sff/compare/v0.3.1...HEAD
+[0.4.0]: https://github.com/openkakutou/sff/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/openkakutou/sff/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/openkakutou/sff/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/openkakutou/sff/compare/v0.1.0...v0.2.0

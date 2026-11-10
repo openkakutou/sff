@@ -37,6 +37,18 @@ SFF_CORPUS_DIR=/path/to/real/character/files go test -run TestCorpusCompat_RealS
 
 See `.vibe/fixture-sources.md`'s "Local real-character corpus" section for where this corpus comes from. No local, machine-specific fixture corpus path is ever hardcoded into source, tests, or committed config.
 
+## Fuzzing
+
+Native Go fuzz targets cover every reader: `FuzzParseV1`, `FuzzParseV2`, `FuzzLoad` (which also runs `ResolveSpritePixels`), `FuzzDecodePCX` and `FuzzDecodeV2Sprite` (raw, RLE8, RLE5, LZ5, PNG8/24/32). They are seeded from the real fixtures in `testdata/files/` plus small hand-built inputs, and check that a reader never panics or hangs and returns either a well-formed result or an error.
+
+A plain `go test ./...` runs only the seeds. To fuzz one target:
+
+```sh
+go test -run='^$' -fuzz='^FuzzLoad$' -fuzztime=30s .
+```
+
+A crashing input Go saves under `testdata/fuzz/<Target>/` is committed as a regression seed once fixed.
+
 ## Lint
 
 ```sh

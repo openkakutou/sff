@@ -69,4 +69,4 @@ Most consumers only need these two functions.
 
 - A missing `(group, image)` lookup returns an error prefixed `"sprite not found: "` — callers iterating candidate sprites can distinguish "doesn't exist" from "something is broken" without parsing the rest of the message.
 - Every decode/parse function returns a descriptive `error` on malformed or truncated input rather than panicking.
-- `ResolveSpritePixels` additionally rejects an implausibly large declared sprite size (`SpritePixelDimensionLimit`, 4096px per axis) with a descriptive error, since it is reachable from untrusted caller-supplied bytes (e.g. a future WASM boundary).
+- Every reader (`ParseV1`/`ParseV2`, `Load`, `DecodePCX`, `DecodeV2Sprite`, `ResolveSpritePixels`, palette resolution) bounds what a file declares before allocating, returning a descriptive error past a limit: total sprite pixel area at most `SpritePixelDimensionLimit` squared (4096×4096 — area, not per axis, so very wide-and-short real sprites still load), encoded sprite/palette data at most `MaxDataLength` bytes (64 MiB), and sprite/palette table counts at most `MaxTableEntries` (262144).
