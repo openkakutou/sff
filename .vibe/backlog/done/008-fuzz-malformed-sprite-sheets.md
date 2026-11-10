@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 ---
 # Fuzz the sff readers
 
