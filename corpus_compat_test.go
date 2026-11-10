@@ -82,7 +82,7 @@ func scanFileSprites(f io.ReaderAt) (total int, knownGaps map[string]int, failur
 	}
 	for i, e := range table.Sprites {
 		total++
-		if _, err := resolveV1Pixels(table, f, i, nil); err != nil {
+		if _, err := resolveV1Pixels(table, f, i); err != nil {
 			failures = append(failures, spriteFailure{e.Group, e.Image, err})
 			continue
 		}

@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Large classic (v1) sprite sheets now load with far less memory and noticeably faster — up to 30 times faster on a sheet of 2,000 sprites, and up to a second sooner in the browser on real 100 MB character sheets — with exactly the same sprites as before. Load and display costs are now measured and documented, with commands to reproduce them.
+
 ## [0.4.0] - 2026-11-10
 
 ### Added

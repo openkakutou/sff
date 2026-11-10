@@ -98,4 +98,5 @@ See [docs/wasm.md](docs/wasm.md) for the full JS API contract and how to build t
 - [docs/architecture.md](docs/architecture.md) — how the read path, write path, shared data model, and WASM entrypoint fit together internally
 - [docs/testing.md](docs/testing.md) — test strategy, how to run the suite, and how the real-file fixture corpus works
 - [docs/wasm.md](docs/wasm.md) — the WebAssembly entrypoint's JS API, how to build it locally, and the release pipeline that publishes it
+- [docs/performance.md](docs/performance.md) — how to measure decode time and allocations, and the recorded numbers
 <!-- vibe:end:docs-index -->

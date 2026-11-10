@@ -54,9 +54,9 @@ const signaturePeekSize = 16
 // v1's sprite table carries no width/height (see
 // .vibe/decisions/004-sff-v1-table-is-a-separate-low-level-type.md): Load
 // decodes each sprite's PCX pixel data to recover them, resolving a linked
-// sprite (one with no pixel data of its own) to its link target first. A
-// link chain that is out of range or cycles back on itself returns a
-// descriptive error instead of looping or panicking. v1's table also only
+// sprite (one with no pixel data of its own) to its link target first; a
+// self- or forward-reference falls back to the sprite's own data. v1's
+// table also only
 // records whether a sprite reuses the previous sprite's palette, not a
 // numeric reference, so Sprite.Palette is derived by incrementing a counter
 // on every sprite that does not share, and having sharing sprites inherit
@@ -110,7 +110,7 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 			palette++
 		}
 
-		img, err := resolveV1Pixels(table, r, i, nil)
+		img, err := resolveV1Pixels(table, r, i)
 		if err != nil {
 			return nil, fmt.Errorf("sff: sprite %d (group %d, image %d): %w", i, e.Group, e.Image, err)
 		}
@@ -139,7 +139,7 @@ func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 	if i < 0 || i >= len(table.Sprites) {
 		return nil, fmt.Errorf("sff: v1 pixels: sprite index %d out of range (have %d sprites)", i, len(table.Sprites))
 	}
-	return resolveV1Pixels(table, r, i, nil)
+	return resolveV1Pixels(table, r, i)
 }
 
 // resolveV1Pixels returns the decoded PCX pixel data belonging to sprite
@@ -156,38 +156,34 @@ func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 // target through this field — matching the reference decoder, an
 // unavoidable format quirk, not a bug in this package).
 //
-// seen tracks indices already visited on the current chain, so a link
-// cycle is reported as an error rather than recursing forever; pass nil on
-// the initial call. Every recursive call here strictly decreases the
-// index, so a cycle is not actually reachable, but the guard is kept for
-// defense in depth and to give a descriptive error instead of an
-// unbounded/panicking read if that invariant is ever wrong.
-func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int, seen map[int]bool) (*PCXImage, error) {
-	if seen == nil {
-		seen = make(map[int]bool, len(table.Sprites))
-	}
-	if seen[i] {
-		return nil, fmt.Errorf("linked sprite chain cycles back to sprite index %d", i)
-	}
-	seen[i] = true
-
-	e := table.Sprites[i]
-	if e.Length == 0 {
-		if i == 0 {
-			return nil, fmt.Errorf("sprite 0 has no pixel data of its own and no earlier sprite to inherit from")
+// The walk is iterative and allocation-free: every step moves to a strictly
+// smaller index (i-1 for a zero-length sprite, or a LinkedIndex already
+// known to be < i), so it always terminates at an owner of pixel data, at
+// sprite 0, or at an error, and needs no visited set to guard against a
+// link cycle.
+func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error) {
+	var e V1SpriteEntry
+	for {
+		e = table.Sprites[i]
+		if e.Length == 0 {
+			if i == 0 {
+				return nil, fmt.Errorf("sprite 0 has no pixel data of its own and no earlier sprite to inherit from")
+			}
+			i--
+			continue
 		}
-		return resolveV1Pixels(table, r, i-1, seen)
-	}
 
-	linked := e.LinkedIndex
-	if linked >= i {
-		linked = 0
-	}
-	if linked != 0 {
-		if linked < 0 || linked >= len(table.Sprites) {
+		linked := e.LinkedIndex
+		if linked >= i {
+			linked = 0
+		}
+		if linked == 0 {
+			break
+		}
+		if linked < 0 {
 			return nil, fmt.Errorf("links to out-of-range sprite index %d", linked)
 		}
-		return resolveV1Pixels(table, r, linked, seen)
+		i = linked
 	}
 
 	// Own data: a sprite that owns its palette (SharedPalette == false)

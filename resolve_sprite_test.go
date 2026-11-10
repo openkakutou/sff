@@ -241,3 +241,22 @@ func TestCheckSpriteDimensions(t *testing.T) {
 		})
 	}
 }
+
+func benchmarkResolveSpritePixels(b *testing.B, data []byte) {
+	r := bytes.NewReader(data)
+	group, image := largeSheetGroup(largeSheetBenchTarget), largeSheetImage(largeSheetBenchTarget)
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, _, _, err := ResolveSpritePixels(r, group, image, nil); err != nil {
+			b.Fatalf("ResolveSpritePixels: %v", err)
+		}
+	}
+}
+
+func BenchmarkResolveSpritePixels_V1LargeSheet(b *testing.B) {
+	benchmarkResolveSpritePixels(b, buildLargeV1Sheet(b))
+}
+
+func BenchmarkResolveSpritePixels_V2LargeSheet(b *testing.B) {
+	benchmarkResolveSpritePixels(b, buildLargeV2Sheet(b))
+}
