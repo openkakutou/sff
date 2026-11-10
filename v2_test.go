@@ -330,3 +330,15 @@ func TestParseV2_PaletteTableTruncatedBeforeDeclaredCount_ReturnsErrorNotPanic(t
 		t.Fatalf("expected an error when the palette table is truncated before the declared count, got nil")
 	}
 }
+
+// FuzzParseV2 checks ParseV2 never panics or hangs on arbitrary bytes.
+func FuzzParseV2(f *testing.F) {
+	addFixtureSeeds(f, "v2-")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		table, err := ParseV2(bytes.NewReader(data))
+		if err == nil && (len(table.Sprites) != table.Header.SpriteCount || len(table.Palettes) != table.Header.PaletteCount) {
+			t.Fatalf("parsed %d sprites/%d palettes, header declares %d/%d", len(table.Sprites), len(table.Palettes), table.Header.SpriteCount, table.Header.PaletteCount)
+		}
+	})
+}

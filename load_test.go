@@ -284,3 +284,25 @@ func TestLoad_TruncatedFile_ReturnsErrorRatherThanPanicking(t *testing.T) {
 		t.Fatal("expected an error for a file too short to contain a header, got nil")
 	}
 }
+
+// FuzzLoad checks Load and ResolveSpritePixels (both versions, auto-
+// detected) never panic or hang on arbitrary bytes, and that every
+// resolved sprite's pixel buffer matches its reported size.
+func FuzzLoad(f *testing.F) {
+	addFixtureSeeds(f, "v")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		groups, err := Load(bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+		for _, g := range groups {
+			for _, s := range g.Sprites {
+				px, w, h, err := ResolveSpritePixels(bytes.NewReader(data), s.Group, s.Image, nil)
+				if err == nil && len(px) != w*h {
+					t.Fatalf("len(pixels)=%d, want %dx%d", len(px), w, h)
+				}
+			}
+		}
+	})
+}

@@ -130,3 +130,20 @@ func openTestdataFile(t *testing.T, name string) *os.File {
 	}
 	return f
 }
+
+// addFixtureSeeds feeds every real fixture under testdata/files whose name
+// starts with prefix to a fuzz target as a seed corpus entry.
+func addFixtureSeeds(f *testing.F, prefix string) {
+	f.Helper()
+	paths, err := filepath.Glob(filepath.Join("testdata", "files", prefix+"*.sff"))
+	if err != nil || len(paths) == 0 {
+		f.Fatalf("no fixtures matching %s*.sff (err=%v)", prefix, err)
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			f.Fatalf("reading fixture %s: %v", p, err)
+		}
+		f.Add(data)
+	}
+}

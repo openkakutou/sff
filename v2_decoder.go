@@ -70,6 +70,9 @@ func decodeV2Raw(width, height, colorDepth int, data []byte) (*V2Image, error) {
 		return nil, fmt.Errorf("sff: v2 sprite: invalid dimensions %dx%d for raw format", width, height)
 	}
 
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
 	want := width * height
 	if len(data) != want {
 		return nil, fmt.Errorf("sff: v2 sprite: raw pixel data length %d does not match declared %dx%d size (%d bytes)", len(data), width, height, want)
@@ -107,6 +110,9 @@ func decodeV2RLE8(width, height, colorDepth int, data []byte) (*V2Image, error) 
 		return nil, fmt.Errorf("sff: v2 sprite: RLE8 pixel data too short (%d bytes, need at least 4 for the length prefix)", len(data))
 	}
 
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
 	want := width * height
 	pixels := make([]byte, want)
 	stream := data[4:]
@@ -196,6 +202,9 @@ func decodeV2RLE5(width, height, colorDepth int, data []byte) (*V2Image, error) 
 		return nil, fmt.Errorf("sff: v2 sprite: RLE5 pixel data too short (%d bytes, need at least 4 for the length prefix)", len(data))
 	}
 
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
 	want := width * height
 	stream := data[4:]
 	pixels := make([]byte, want)
@@ -309,6 +318,9 @@ func decodeV2LZ5(width, height, colorDepth int, data []byte) (*V2Image, error) {
 		return nil, fmt.Errorf("sff: v2 sprite: LZ5 pixel data too short (%d bytes, need at least 4 for the length prefix)", len(data))
 	}
 
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
 	want := width * height
 	stream := data[4:]
 	pixels := make([]byte, want)
@@ -423,6 +435,17 @@ func decodeV2LZ5(width, height, colorDepth int, data []byte) (*V2Image, error) {
 func decodeV2PNG(format, width, height int, data []byte) (*V2Image, error) {
 	if len(data) < 4 {
 		return nil, fmt.Errorf("sff: v2 sprite: PNG pixel data too short (%d bytes, need at least 4 for the length prefix)", len(data))
+	}
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
+	// Check the PNG's own header before png.Decode allocates from it.
+	cfg, err := png.DecodeConfig(bytes.NewReader(data[4:]))
+	if err != nil {
+		return nil, fmt.Errorf("sff: v2 sprite: decoding PNG pixel data: %w", err)
+	}
+	if err := checkSpriteDimensions(cfg.Width, cfg.Height); err != nil {
+		return nil, err
 	}
 	img, err := png.Decode(bytes.NewReader(data[4:]))
 	if err != nil {

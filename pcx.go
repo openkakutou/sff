@@ -72,6 +72,10 @@ func DecodePCX(data []byte) (*PCXImage, error) {
 		return nil, fmt.Errorf("sff: pcx: bytes-per-line %d is smaller than image width %d", bytesPerLine, width)
 	}
 
+	if err := checkSpriteDimensions(width, height); err != nil {
+		return nil, err
+	}
+
 	pixels := make([]byte, width*height)
 	cursor := pcxHeaderSize
 	line := make([]byte, 0, bytesPerLine)

@@ -5,13 +5,15 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 // buildPNG8 encodes a paletted (8-bit indexed) PNG from a row-major index
 // buffer, with the 4-byte length prefix real .sff v2 PNG8 sprite pixel data
 // is stored with on disk.
-func buildPNG8(t *testing.T, width, height int, indices []byte) []byte {
+func buildPNG8(t testing.TB, width, height int, indices []byte) []byte {
 	t.Helper()
 
 	palette := make(color.Palette, 256)
@@ -36,7 +38,7 @@ func buildPNG8(t *testing.T, width, height int, indices []byte) []byte {
 // buildPNG24 encodes an RGB (no alpha) PNG from a row-major RGB byte
 // buffer, with the 4-byte length prefix real .sff v2 PNG24 sprite pixel
 // data is stored with on disk.
-func buildPNG24(t *testing.T, width, height int, rgb []byte) []byte {
+func buildPNG24(t testing.TB, width, height int, rgb []byte) []byte {
 	t.Helper()
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -57,7 +59,7 @@ func buildPNG24(t *testing.T, width, height int, rgb []byte) []byte {
 // buildPNG32 encodes an RGBA PNG from a row-major RGBA byte buffer, with
 // the 4-byte length prefix real .sff v2 PNG32 sprite pixel data is stored
 // with on disk.
-func buildPNG32(t *testing.T, width, height int, rgba []byte) []byte {
+func buildPNG32(t testing.TB, width, height int, rgba []byte) []byte {
 	t.Helper()
 
 	img := image.NewNRGBA(image.Rect(0, 0, width, height))
@@ -648,4 +650,60 @@ func TestDecodeV2Sprite_ReturnsErrorOnLZ5InvalidDimensions(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for zero declared dimensions, got nil")
 	}
+}
+
+// FuzzDecodeV2Sprite checks every v2 pixel decoder (raw, RLE8, RLE5, LZ5,
+// PNG8/24/32) never panics or hangs, and that a successful result's buffer
+// matches its declared size and bytes per pixel.
+func FuzzDecodeV2Sprite(f *testing.F) {
+	f.Add(V2FormatRaw, 2, 2, 8, []byte{1, 2, 3, 4})
+	f.Add(V2FormatRLE8, 4, 1, 8, buildRLE8(4, []byte{0x43, 7, 9}))
+	f.Add(V2FormatRLE5, 4, 1, 5, buildRLE5(4, []byte{0, 1, 2, 3}))
+	f.Add(V2FormatLZ5, 4, 1, 5, buildLZ5(4, []byte{0, 1, 2, 3}))
+	f.Add(V2FormatPNG8, 2, 2, 8, buildPNG8(f, 2, 2, []byte{1, 2, 3, 4}))
+	f.Add(V2FormatPNG24, 1, 1, 24, buildPNG24(f, 1, 1, []byte{1, 2, 3}))
+	f.Add(V2FormatPNG32, 1, 1, 32, buildPNG32(f, 1, 1, []byte{1, 2, 3, 4}))
+	for _, e := range v2FixtureSpriteData(f) {
+		f.Add(e.Format, e.Width, e.Height, e.ColorDepth, e.data)
+	}
+
+	f.Fuzz(func(t *testing.T, format, width, height, depth int, data []byte) {
+		img, err := DecodeV2Sprite(format, width, height, depth, data)
+		if err != nil {
+			return
+		}
+		if want := width * height * img.BytesPerPixel; len(img.Pixels) != want {
+			t.Fatalf("len(Pixels)=%d, want %d", len(img.Pixels), want)
+		}
+	})
+}
+
+type fuzzSpriteSeed struct {
+	V2SpriteEntry
+	data []byte
+}
+
+// v2FixtureSpriteData returns the encoded pixel data of every own-data
+// sprite in the real v2 fixtures.
+func v2FixtureSpriteData(f *testing.F) []fuzzSpriteSeed {
+	f.Helper()
+	paths, _ := filepath.Glob(filepath.Join("testdata", "files", "v2-*.sff"))
+	var out []fuzzSpriteSeed
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			f.Fatalf("reading %s: %v", p, err)
+		}
+		table, err := ParseV2(bytes.NewReader(raw))
+		if err != nil {
+			f.Fatalf("ParseV2 %s: %v", p, err)
+		}
+		for _, e := range table.Sprites {
+			if e.Length == 0 || e.Offset < 0 || e.Offset+int64(e.Length) > int64(len(raw)) {
+				continue
+			}
+			out = append(out, fuzzSpriteSeed{e, raw[e.Offset : e.Offset+int64(e.Length)]})
+		}
+	}
+	return out
 }

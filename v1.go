@@ -119,9 +119,13 @@ func ParseV1(r io.ReaderAt) (*V1SpriteTable, error) {
 		return nil, errors.New("sff: v1 header declares a negative group or image count")
 	}
 
+	if err := checkTableCount("v1 sprite", h.ImageCount); err != nil {
+		return nil, err
+	}
+
 	table := &V1SpriteTable{
 		Header:  h,
-		Sprites: make([]V1SpriteEntry, 0, h.ImageCount),
+		Sprites: make([]V1SpriteEntry, 0, tableCap(h.ImageCount)),
 	}
 
 	for i := 0; i < h.ImageCount; i++ {

@@ -91,6 +91,9 @@ func resolveSpritePixelsV2(r io.ReaderAt, group, image int, override *Palette) (
 		return nil, 0, 0, err
 	}
 
+	if err := checkDataLength("v2 sprite", e.Length); err != nil {
+		return nil, 0, 0, err
+	}
 	raw := make([]byte, e.Length)
 	if _, err := r.ReadAt(raw, e.Offset); err != nil {
 		return nil, 0, 0, fmt.Errorf("sff: reading sprite pixel data: %w", err)

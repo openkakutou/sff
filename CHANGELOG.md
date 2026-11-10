@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Corrupt or malicious sprite files can no longer make an app exhaust its memory: every declared image size, data length and sprite count is now checked against a safe limit and rejected with a clear error, while every real character file keeps loading as before. The readers are now covered by automated fuzz testing.
+
 ## [0.3.1] - 2026-09-02
 
 ### Fixed

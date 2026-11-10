@@ -179,3 +179,31 @@ func bytesEqual(a, b []byte) bool {
 	}
 	return true
 }
+
+// FuzzDecodePCX checks DecodePCX never panics or hangs on arbitrary bytes
+// and that any successful result has a pixel buffer matching its size.
+func FuzzDecodePCX(f *testing.F) {
+	f.Add(mustEncodePCXFuzz(f, &PCXImage{Width: 3, Height: 2, Pixels: []byte{1, 2, 3, 4, 4, 4}}))
+	f.Add(mustEncodePCXFuzz(f, &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}}))
+	f.Add(make([]byte, pcxHeaderSize))
+	f.Add([]byte{})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		img, err := DecodePCX(data)
+		if err != nil {
+			return
+		}
+		if len(img.Pixels) != img.Width*img.Height {
+			t.Fatalf("len(Pixels)=%d, want %dx%d", len(img.Pixels), img.Width, img.Height)
+		}
+	})
+}
+
+func mustEncodePCXFuzz(f *testing.F, img *PCXImage) []byte {
+	f.Helper()
+	data, err := EncodePCX(img)
+	if err != nil {
+		f.Fatalf("EncodePCX: %v", err)
+	}
+	return data
+}

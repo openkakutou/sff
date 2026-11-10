@@ -202,6 +202,9 @@ func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int, seen map[int]bo
 		}
 	}
 
+	if err := checkDataLength("v1 sprite", int(pixelLen)); err != nil {
+		return nil, err
+	}
 	raw := make([]byte, pixelLen)
 	if _, err := r.ReadAt(raw, e.Offset); err != nil {
 		// A SharedPalette sprite's declared Length can still, on some real

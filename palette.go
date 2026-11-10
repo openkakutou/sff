@@ -301,6 +301,9 @@ func resolveV2Palette(table *V2SpriteTable, r io.ReaderAt, index int, seen map[i
 
 	e := table.Palettes[index]
 	if e.Length > 0 {
+		if err := checkDataLength("v2 palette bank", e.Length); err != nil {
+			return Palette{}, err
+		}
 		raw := make([]byte, e.Length)
 		if _, err := r.ReadAt(raw, e.Offset); err != nil {
 			return Palette{}, fmt.Errorf("sff: v2 palette: reading bank %d color data: %w", index, err)

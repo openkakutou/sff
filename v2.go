@@ -185,10 +185,17 @@ func ParseV2(r io.ReaderAt) (*V2SpriteTable, error) {
 		return nil, errors.New("sff: v2 header declares a negative sprite or palette count")
 	}
 
+	if err := checkTableCount("v2 sprite", h.SpriteCount); err != nil {
+		return nil, err
+	}
+	if err := checkTableCount("v2 palette", h.PaletteCount); err != nil {
+		return nil, err
+	}
+
 	table := &V2SpriteTable{
 		Header:   h,
-		Sprites:  make([]V2SpriteEntry, 0, h.SpriteCount),
-		Palettes: make([]V2PaletteEntry, 0, h.PaletteCount),
+		Sprites:  make([]V2SpriteEntry, 0, tableCap(h.SpriteCount)),
+		Palettes: make([]V2PaletteEntry, 0, tableCap(h.PaletteCount)),
 	}
 
 	paletteBuf := make([]byte, v2PaletteEntrySize)

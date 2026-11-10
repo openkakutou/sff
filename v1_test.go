@@ -24,7 +24,7 @@ type v1SubfileSpec struct {
 // buildV1File assembles a byte-exact synthetic .sff v1 file: a 512-byte
 // header followed by one 32-byte subheader + pixel data blob per spec,
 // linked in file order via each subheader's "next subfile" offset.
-func buildV1File(t *testing.T, groupCount, imageCount uint32, sharedPalette bool, specs []v1SubfileSpec) []byte {
+func buildV1File(t testing.TB, groupCount, imageCount uint32, sharedPalette bool, specs []v1SubfileSpec) []byte {
 	t.Helper()
 
 	var buf bytes.Buffer
@@ -270,4 +270,17 @@ func TestParseV1_SubheaderOffsetPastEndOfFile_ReturnsErrorNotPanic(t *testing.T)
 	if err == nil {
 		t.Fatalf("expected an error when a subheader offset is past the end of file, got nil")
 	}
+}
+
+// FuzzParseV1 checks ParseV1 never panics or hangs on arbitrary bytes.
+func FuzzParseV1(f *testing.F) {
+	addFixtureSeeds(f, "v1-")
+	f.Add(buildV1File(f, 0, 0, false, nil))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		table, err := ParseV1(bytes.NewReader(data))
+		if err == nil && len(table.Sprites) != table.Header.ImageCount {
+			t.Fatalf("%d sprites parsed, header declares %d", len(table.Sprites), table.Header.ImageCount)
+		}
+	})
 }
