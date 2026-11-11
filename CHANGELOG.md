@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-11
+
 ### Fixed
 
 - Classic (v1) sprite sheets now report the right palette for every sprite: sprites that borrow another sprite's palette without being flagged as such, and flagged sprites of the first group and image, were numbered with a different palette than the one they are drawn with, which grouped sprites by palette wrongly.
@@ -47,7 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Palette colors can now be edited and saved back for both v1 and v2 sprite files, and exported as a standalone `.act` palette file compatible with other MUGEN/Ikemen GO tools. Editing a color with an out-of-range value (outside 0-255) is rejected with a descriptive error instead of being silently corrupted.
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
-[Unreleased]: https://github.com/openkakutou/sff/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/openkakutou/sff/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/openkakutou/sff/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/openkakutou/sff/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/openkakutou/sff/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/openkakutou/sff/compare/v0.3.0...v0.3.1
