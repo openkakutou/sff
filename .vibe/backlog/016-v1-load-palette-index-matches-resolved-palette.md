@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 ---
 # v1 Load reports a palette index that disagrees with the resolved palette
 
@@ -13,3 +13,8 @@ status: todo
 
 ## Notes
 Found by the review of item 009 (pre-existing, not introduced by it). Must stay compatible with both MUGEN and Ikemen GO.
+
+## Notes
+
+- Fixed 2026-11-11: the inheritance rule itself is unchanged and stays grounded in decisions 011 and 015 (checked against Ikemen-GO's `Sff.read` source, the reference decoder MUGEN-compatible files are validated against). `Sprite.Palette` numbering is this library's own concept — neither engine exposes one — so it now derives from that same rule, written once.
+- The `SFF_CORPUS_DIR` scan could not run on the fixing machine (corpus not present); vendored real fixtures pass. Re-run the scan where the corpus exists.

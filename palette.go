@@ -133,19 +133,35 @@ func ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Pale
 	return resolveV1Palette(table, r, i)
 }
 
-func resolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int) (Palette, error) {
+// v1PaletteSource returns the index of the entry whose palette entry i uses
+// (i itself if it owns its block), per ResolveV1Palette's rule. Shared by
+// resolveV1Palette and loadV1.
+func v1PaletteSource(table *V1SpriteTable, i int) int {
 	e := table.Sprites[i]
-
-	if e.Length == 0 && i > 0 {
-		return resolveV1Palette(table, r, i-1)
+	if i == 0 {
+		return 0
 	}
-
-	if e.SharedPalette && i > 0 {
+	if e.Length == 0 {
+		return i - 1
+	}
+	if e.SharedPalette {
 		if e.Group == 0 && e.Image == 0 {
-			return resolveV1Palette(table, r, 0)
+			return 0
 		}
-		return resolveV1Palette(table, r, i-1)
+		return i - 1
 	}
+	return i
+}
+
+func resolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int) (Palette, error) {
+	for {
+		src := v1PaletteSource(table, i)
+		if src == i {
+			break
+		}
+		i = src
+	}
+	e := table.Sprites[i]
 
 	if int64(e.Length) < V1PaletteBlockSize {
 		if e.SharedPalette {

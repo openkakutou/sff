@@ -530,3 +530,92 @@ func TestResolveV1Pixels_LinkToOutOfRangeIndex_ReturnsError(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_V1File_ZeroLengthSpriteNotMarkedShared_ReportsInheritedPaletteNumber(t *testing.T) {
+	sprites := []V1WriteSprite{
+		{
+			Group: 0, Image: 0, SharedPalette: false,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{1, 2}}),
+			Palette:   v1TestPalette(),
+		},
+		{
+			// Linked sprite with no pixel data of its own; the shared bit
+			// is cleared below, since the serializer cannot write a
+			// non-shared entry without a palette block.
+			Group: 0, Image: 1, SharedPalette: true, LinkedIndex: 0,
+		},
+		{
+			Group: 1, Image: 0, SharedPalette: false,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{3, 4}}),
+			Palette:   v1TestPalette(),
+		},
+	}
+
+	data := serializeV1ForTest(t, sprites)
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("test setup: ParseV1 failed: %v", err)
+	}
+	// The sprite is drawn with sprite 0's palette whatever its shared bit
+	// says (decision 011): clear the bit in its subheader, which sits in the
+	// 32 bytes before its pixel data offset (palette flag at byte 18).
+	data[table.Sprites[1].Offset-subheaderSize+18] = 0
+
+	assertLoadedV1PaletteNumbers(t, data, sprites, []int{0, 0, 1})
+}
+
+func TestLoad_V1File_SharedGroupZeroImageZeroSpriteAboveIndexZero_ReportsIndexZerosPaletteNumber(t *testing.T) {
+	sprites := []V1WriteSprite{
+		{
+			Group: 0, Image: 1, SharedPalette: false,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{1, 2}}),
+			Palette:   v1TestPalette(),
+		},
+		{
+			Group: 1, Image: 0, SharedPalette: false,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{3, 4}}),
+			Palette:   v1TestPalette(),
+		},
+		{
+			// Shared (0, 0) entry: inherits table index 0's palette, not the
+			// immediately preceding sprite's (decision 011).
+			Group: 0, Image: 0, SharedPalette: true,
+			PixelData: mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{5, 6}}),
+		},
+	}
+
+	assertLoadedV1PaletteNumbers(t, serializeV1ForTest(t, sprites), sprites, []int{0, 1, 0})
+}
+
+func serializeV1ForTest(t *testing.T, sprites []V1WriteSprite) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := SerializeV1(&buf, [4]byte{1, 0, 0, 1}, false, sprites); err != nil {
+		t.Fatalf("test setup: SerializeV1 failed: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// assertLoadedV1PaletteNumbers loads data and checks want[i], the expected
+// Palette of sprites[i].
+func assertLoadedV1PaletteNumbers(t *testing.T, data []byte, sprites []V1WriteSprite, want []int) {
+	t.Helper()
+	groups, err := Load(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	palettes := map[[2]int]int{}
+	for _, g := range groups {
+		for _, s := range g.Sprites {
+			palettes[[2]int{s.Group, s.Image}] = s.Palette
+		}
+	}
+	for i, s := range sprites {
+		got, ok := palettes[[2]int{s.Group, s.Image}]
+		if !ok {
+			t.Errorf("sprite (%d,%d) missing from Load result", s.Group, s.Image)
+		} else if got != want[i] {
+			t.Errorf("sprite (%d,%d): Palette = %d, want %d", s.Group, s.Image, got, want[i])
+		}
+	}
+}

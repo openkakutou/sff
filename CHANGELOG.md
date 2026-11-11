@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Classic (v1) sprite sheets now report the right palette for every sprite: sprites that borrow another sprite's palette without being flagged as such, and flagged sprites of the first group and image, were numbered with a different palette than the one they are drawn with, which grouped sprites by palette wrongly.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

@@ -56,11 +56,9 @@ const signaturePeekSize = 16
 // decodes each sprite's PCX pixel data to recover them, resolving a linked
 // sprite (one with no pixel data of its own) to its link target first; a
 // self- or forward-reference falls back to the sprite's own data. v1's
-// table also only
-// records whether a sprite reuses the previous sprite's palette, not a
-// numeric reference, so Sprite.Palette is derived by incrementing a counter
-// on every sprite that does not share, and having sharing sprites inherit
-// the current value.
+// table has no numeric palette reference, so Sprite.Palette numbers palette
+// owners in table order and inheriting sprites repeat their source's number
+// (rule: see ResolveV1Palette).
 //
 // v2's sprite table already carries width/height and an explicit palette
 // bank index, so each V2SpriteEntry maps directly to a Sprite without
@@ -95,8 +93,8 @@ func detectVersion(r io.ReaderAt) (isV2 bool, err error) {
 
 // loadV1 assembles a v1 .sff file's sprite table into SpriteGroups,
 // decoding each sprite's PCX pixel data to recover its dimensions and
-// deriving a Palette value from the table's per-sprite palette-sharing
-// flag.
+// numbering each sprite's palette by the same inheritance rule
+// ResolveV1Palette uses (see v1PaletteSource).
 func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 	table, err := ParseV1(r)
 	if err != nil {
@@ -104,10 +102,14 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 	}
 
 	sprites := make([]Sprite, len(table.Sprites))
-	palette := -1
+	paletteNumbers := make([]int, len(table.Sprites))
+	owners := 0
 	for i, e := range table.Sprites {
-		if !e.SharedPalette || palette == -1 {
-			palette++
+		if src := v1PaletteSource(table, i); src == i {
+			paletteNumbers[i] = owners
+			owners++
+		} else {
+			paletteNumbers[i] = paletteNumbers[src]
 		}
 
 		img, err := resolveV1Pixels(table, r, i)
@@ -122,7 +124,7 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 			Height:  img.Height,
 			AxisX:   e.AxisX,
 			AxisY:   e.AxisY,
-			Palette: palette,
+			Palette: paletteNumbers[i],
 		}
 	}
 
