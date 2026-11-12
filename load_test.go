@@ -2,7 +2,9 @@ package sff
 
 import (
 	"bytes"
+	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -551,7 +553,7 @@ func TestLoad_V1File_ZeroLengthSpriteNotMarkedShared_ReportsInheritedPaletteNumb
 		},
 	}
 
-	data := serializeV1ForTest(t, sprites)
+	data := serializeV1ForTest(t, false, sprites)
 	table, err := ParseV1(bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("test setup: ParseV1 failed: %v", err)
@@ -584,13 +586,13 @@ func TestLoad_V1File_SharedGroupZeroImageZeroSpriteAboveIndexZero_ReportsIndexZe
 		},
 	}
 
-	assertLoadedV1PaletteNumbers(t, serializeV1ForTest(t, sprites), sprites, []int{0, 1, 0})
+	assertLoadedV1PaletteNumbers(t, serializeV1ForTest(t, false, sprites), sprites, []int{0, 1, 0})
 }
 
-func serializeV1ForTest(t *testing.T, sprites []V1WriteSprite) []byte {
+func serializeV1ForTest(t *testing.T, sharedPalette bool, sprites []V1WriteSprite) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := SerializeV1(&buf, [4]byte{1, 0, 0, 1}, false, sprites); err != nil {
+	if err := SerializeV1(&buf, [4]byte{1, 0, 0, 1}, sharedPalette, sprites); err != nil {
 		t.Fatalf("test setup: SerializeV1 failed: %v", err)
 	}
 	return buf.Bytes()
@@ -617,5 +619,157 @@ func assertLoadedV1PaletteNumbers(t *testing.T, data []byte, sprites []V1WriteSp
 		} else if got != want[i] {
 			t.Errorf("sprite (%d,%d): Palette = %d, want %d", s.Group, s.Image, got, want[i])
 		}
+	}
+}
+
+// pixelSpanCountingReader counts ReadAt calls that start at a given offset,
+// i.e. reads of one sprite's pixel span.
+type pixelSpanCountingReader struct {
+	r     io.ReaderAt
+	reads map[int64]int
+}
+
+func (c *pixelSpanCountingReader) ReadAt(p []byte, off int64) (int, error) {
+	if c.reads == nil {
+		c.reads = map[int64]int{}
+	}
+	if len(p) > 0 {
+		c.reads[off]++
+	}
+	return c.r.ReadAt(p, off)
+}
+
+func buildZeroLengthChainV1File(t *testing.T, zeroLength int) []byte {
+	t.Helper()
+	pcx := mustEncodePCX(t, &PCXImage{Width: 3, Height: 2, Pixels: []byte{10, 11, 12, 13, 14, 15}})
+	sprites := make([]V1WriteSprite, 1+zeroLength)
+	sprites[0] = V1WriteSprite{Group: 0, Image: 0, PixelData: pcx, Palette: v1TestPalette()}
+	for i := 1; i < len(sprites); i++ {
+		sprites[i] = V1WriteSprite{Group: 1 + i/1000, Image: i % 1000, SharedPalette: true}
+	}
+	return serializeV1ForTest(t, true, sprites)
+}
+
+func TestLoad_V1LongZeroLengthChain_ReadsOwnerPixelsOnce(t *testing.T) {
+	const zeroLength = 20000
+	data := buildZeroLengthChainV1File(t, zeroLength)
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	ownerOffset := table.Sprites[0].Offset
+
+	counter := &pixelSpanCountingReader{r: bytes.NewReader(data)}
+	groups, err := Load(counter)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	total := 0
+	for _, g := range groups {
+		for _, s := range g.Sprites {
+			total++
+			if s.Width != 3 || s.Height != 2 {
+				t.Fatalf("sprite (%d,%d): got %dx%d, want 3x2", s.Group, s.Image, s.Width, s.Height)
+			}
+		}
+	}
+	if total != zeroLength+1 {
+		t.Fatalf("expected %d sprites, got %d", zeroLength+1, total)
+	}
+	if n := counter.reads[ownerOffset]; n != 1 {
+		t.Errorf("owner pixel span read %d times, want exactly 1", n)
+	}
+}
+
+func TestLoad_V1BackwardLinkedSpriteFollowedByZeroLengthSprites_MatchesPerSpriteResolve(t *testing.T) {
+	ownerPCX := mustEncodePCX(t, &PCXImage{Width: 1, Height: 2, Pixels: []byte{1, 2}})
+	linkTargetPCX := mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{3, 4}})
+	linkingPCX := mustEncodePCX(t, &PCXImage{Width: 4, Height: 1, Pixels: []byte{9, 9, 9, 9}})
+	sprites := []V1WriteSprite{
+		{Group: 0, Image: 0, SharedPalette: false, PixelData: ownerPCX, Palette: v1TestPalette()},
+		{Group: 0, Image: 1, SharedPalette: true, PixelData: linkTargetPCX},
+		{Group: 0, Image: 2, SharedPalette: true, PixelData: linkingPCX, LinkedIndex: 1}, // backward link to sprite 1
+		{Group: 0, Image: 3, SharedPalette: true},                                        // zero-length: inherits 2 -> owner 1
+		{Group: 0, Image: 4, SharedPalette: true},
+		{Group: 0, Image: 5, SharedPalette: true, PixelData: linkingPCX}, // own data again
+		{Group: 0, Image: 6, SharedPalette: true},
+	}
+	data := serializeV1ForTest(t, true, sprites)
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	groups, err := Load(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	wantDims := [][2]int{{1, 2}, {2, 1}, {2, 1}, {2, 1}, {2, 1}, {4, 1}, {4, 1}}
+	got := groups[0].Sprites
+	if len(got) != len(wantDims) {
+		t.Fatalf("expected %d sprites, got %d", len(wantDims), len(got))
+	}
+	for i, s := range got {
+		if s.Width != wantDims[i][0] || s.Height != wantDims[i][1] {
+			t.Errorf("sprite %d: got %dx%d, want %dx%d", i, s.Width, s.Height, wantDims[i][0], wantDims[i][1])
+		}
+		img, err := ResolveV1Pixels(table, bytes.NewReader(data), i)
+		if err != nil {
+			t.Fatalf("sprite %d: ResolveV1Pixels: %v", i, err)
+		}
+		if s.Width != img.Width || s.Height != img.Height {
+			t.Errorf("sprite %d: Load gave %dx%d, ResolveV1Pixels gave %dx%d", i, s.Width, s.Height, img.Width, img.Height)
+		}
+	}
+}
+
+// TestLoad_V1Fixtures_DimensionsMatchResolveV1PixelsPerSprite guards Load's
+// shortcut of reusing an owner's dimensions: for every sprite of every real
+// v1 fixture, Load must report what a full per-sprite ResolveV1Pixels
+// decode gives. It passed before the shortcut too.
+func TestLoad_V1Fixtures_DimensionsMatchResolveV1PixelsPerSprite(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("testdata", "files", "v1-*.sff"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no v1 fixtures found: %v", err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading %s: %v", path, err)
+			}
+			table, err := ParseV1(bytes.NewReader(data))
+			if err != nil {
+				t.Fatalf("ParseV1: %v", err)
+			}
+			groups, err := Load(bytes.NewReader(data))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			// Load keeps table order within a group, so the n-th table entry
+			// of a group is the n-th sprite of that group.
+			byGroup := map[int][]Sprite{}
+			count := 0
+			for _, g := range groups {
+				byGroup[g.Index] = g.Sprites
+				count += len(g.Sprites)
+			}
+			if count != len(table.Sprites) {
+				t.Fatalf("Load returned %d sprites, table has %d", count, len(table.Sprites))
+			}
+			next := map[int]int{}
+			for i, e := range table.Sprites {
+				img, err := ResolveV1Pixels(table, bytes.NewReader(data), i)
+				if err != nil {
+					t.Fatalf("sprite %d: ResolveV1Pixels: %v", i, err)
+				}
+				s := byGroup[e.Group][next[e.Group]]
+				next[e.Group]++
+				if s.Image != e.Image || s.Width != img.Width || s.Height != img.Height {
+					t.Errorf("sprite %d: Load gave image %d %dx%d, want image %d %dx%d", i, s.Image, s.Width, s.Height, e.Image, img.Width, img.Height)
+				}
+			}
+		})
 	}
 }

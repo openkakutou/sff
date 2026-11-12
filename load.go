@@ -103,16 +103,20 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 
 	sprites := make([]Sprite, len(table.Sprites))
 	paletteNumbers := make([]int, len(table.Sprites))
-	owners := 0
+	pixelOwners := make([]int, len(table.Sprites))
+	for i := range pixelOwners {
+		pixelOwners[i] = -1
+	}
+	nextPaletteNumber := 0
 	for i, e := range table.Sprites {
 		if src := v1PaletteSource(table, i); src == i {
-			paletteNumbers[i] = owners
-			owners++
+			paletteNumbers[i] = nextPaletteNumber
+			nextPaletteNumber++
 		} else {
 			paletteNumbers[i] = paletteNumbers[src]
 		}
 
-		img, err := resolveV1Pixels(table, r, i)
+		width, height, err := loadV1SpriteSize(table, r, i, sprites, pixelOwners)
 		if err != nil {
 			return nil, fmt.Errorf("sff: sprite %d (group %d, image %d): %w", i, e.Group, e.Image, err)
 		}
@@ -120,8 +124,8 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 		sprites[i] = Sprite{
 			Group:   e.Group,
 			Image:   e.Image,
-			Width:   img.Width,
-			Height:  img.Height,
+			Width:   width,
+			Height:  height,
 			AxisX:   e.AxisX,
 			AxisY:   e.AxisY,
 			Palette: paletteNumbers[i],
@@ -129,6 +133,26 @@ func loadV1(r io.ReaderAt) ([]SpriteGroup, error) {
 	}
 
 	return groupSprites(sprites), nil
+}
+
+// loadV1SpriteSize returns sprite i's dimensions and records its pixel owner
+// in pixelOwners. A sprite that owns its pixels decodes them; any other
+// sprite shares its owner's image, whose dimensions are already in sprites.
+// This keeps Load linear however long a zero-length chain is.
+func loadV1SpriteSize(table *V1SpriteTable, r io.ReaderAt, i int, sprites []Sprite, pixelOwners []int) (int, int, error) {
+	owner, err := v1PixelOwner(table, i, pixelOwners)
+	if err != nil {
+		return 0, 0, err
+	}
+	pixelOwners[i] = owner
+	if owner != i {
+		return sprites[owner].Width, sprites[owner].Height, nil
+	}
+	img, err := decodeV1Pixels(table, r, i)
+	if err != nil {
+		return 0, 0, err
+	}
+	return img.Width, img.Height, nil
 }
 
 // ResolveV1Pixels resolves sprite index i's actual decoded PCX pixel data —
@@ -145,7 +169,17 @@ func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 }
 
 // resolveV1Pixels returns the decoded PCX pixel data belonging to sprite
-// index i in table, replicating the reference decoder's exact linking rule
+// index i in table (owner walk, then decode).
+func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error) {
+	owner, err := v1PixelOwner(table, i, nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeV1Pixels(table, r, owner)
+}
+
+// v1PixelOwner returns the index of the sprite whose own PCX data sprite
+// index i in table resolves to, replicating the reference decoder's exact linking rule
 // (see .vibe/decisions/011-v1-sprite-linking-and-palette-inheritance-rules.md):
 // a sprite with no pixel data of its own (Length == 0) always inherits the
 // immediately preceding table entry's already-resolved image — its own
@@ -158,18 +192,24 @@ func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 // target through this field — matching the reference decoder, an
 // unavoidable format quirk, not a bug in this package).
 //
+// When pixelOwners is non-nil, pixelOwners[j] >= 0 is the already-known
+// owner of sprite j, and the walk stops there instead of re-walking the
+// chain behind j (loadV1 uses this to stay linear).
+//
 // The walk is iterative and allocation-free: every step moves to a strictly
 // smaller index (i-1 for a zero-length sprite, or a LinkedIndex already
 // known to be < i), so it always terminates at an owner of pixel data, at
 // sprite 0, or at an error, and needs no visited set to guard against a
 // link cycle.
-func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error) {
-	var e V1SpriteEntry
+func v1PixelOwner(table *V1SpriteTable, i int, pixelOwners []int) (int, error) {
 	for {
-		e = table.Sprites[i]
+		if pixelOwners != nil && pixelOwners[i] >= 0 {
+			return pixelOwners[i], nil
+		}
+		e := table.Sprites[i]
 		if e.Length == 0 {
 			if i == 0 {
-				return nil, fmt.Errorf("sprite 0 has no pixel data of its own and no earlier sprite to inherit from")
+				return 0, fmt.Errorf("sprite 0 has no pixel data of its own and no earlier sprite to inherit from")
 			}
 			i--
 			continue
@@ -180,13 +220,19 @@ func resolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, err
 			linked = 0
 		}
 		if linked == 0 {
-			break
+			return i, nil
 		}
 		if linked < 0 {
-			return nil, fmt.Errorf("links to out-of-range sprite index %d", linked)
+			return 0, fmt.Errorf("links to out-of-range sprite index %d", linked)
 		}
 		i = linked
 	}
+}
+
+// decodeV1Pixels reads and decodes the PCX data owned by sprite i, which must
+// be an owner returned by v1PixelOwner.
+func decodeV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error) {
+	e := table.Sprites[i]
 
 	// Own data: a sprite that owns its palette (SharedPalette == false)
 	// declares Length inclusive of its own trailing palette block — see

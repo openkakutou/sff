@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Classic (v1) sprite sheets in which many sprites reuse an earlier sprite's image no longer take a very long time to load: each image is now read once instead of once per sprite reusing it, so a crafted sheet of 100,000 such sprites loads in a few hundredths of a second instead of about 18 seconds.
+
 ## [0.5.1] - 2026-11-11
 
 ### Fixed

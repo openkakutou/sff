@@ -9,7 +9,8 @@ Maintained by the `/vibe:*` commands. Lifecycle of each entry:
 | `decisions/` | 🔒 ADRs — append-only, never regenerated, do not delete |
 | `backlog/` | 🔒 Work data — never regenerated, do not delete |
 | `escalations.md` | 🔒 Work data — append-only escalation log, do not delete |
-| `last-review.md` | ♻ State marker — rewritten by each `/vibe:review` run |
+| `last-review.md` | ♻ Legacy marker — written by the former `/vibe:review` command; safe to delete |
+| `reports/` | ♻ Usage reports — one statistics file per feature/fix run, self-ignored in git, never read by the plugin |
 | `auto-state.md` | 🔒 Work data — `/vibe:auto` run state + append-only journal; deleting it loses the ability to resume an interrupted run |
 
 Never delete the whole `.vibe/` directory: only the ♻ entries can be recovered by re-running `/vibe:sync`.
