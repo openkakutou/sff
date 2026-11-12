@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-12
+
 ### Fixed
 
 - Classic (v1) sprite sheets in which many sprites reuse an earlier sprite's image no longer take a very long time to load: each image is now read once instead of once per sprite reusing it, so a crafted sheet of 100,000 such sprites loads in a few hundredths of a second instead of about 18 seconds.
@@ -53,7 +55,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Palette colors can now be edited and saved back for both v1 and v2 sprite files, and exported as a standalone `.act` palette file compatible with other MUGEN/Ikemen GO tools. Editing a color with an out-of-range value (outside 0-255) is rejected with a descriptive error instead of being silently corrupted.
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
-[Unreleased]: https://github.com/openkakutou/sff/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/openkakutou/sff/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/openkakutou/sff/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/openkakutou/sff/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/openkakutou/sff/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/openkakutou/sff/compare/v0.3.1...v0.4.0
