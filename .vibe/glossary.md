@@ -32,3 +32,8 @@ _Sources: `load.go`, `v1.go`, `v2_decoder.go`_
 ## Pixel encoding format
 The on-disk compression/encoding scheme a sprite's pixel data uses. v1 sprites use PCX (run-length-encoded indexed color). v2 sprites use one of: raw (uncompressed indexed), RLE8 (run-length-encoded indexed), LZ5 (dictionary-compressed indexed), or PNG8/24/32 (indexed or direct-color, via standard PNG).
 _Sources: `pcx.go`, `v2_decoder.go`_
+
+## Palette file order
+The direction in which a standalone palette file lists its colors. `.act` files store index 255 first; JASC `.pal` files normally store index 0 first, but some community `.pal` files are text copies of an `.act` and keep its reversed order. The file does not say which, so the caller chooses.
+**Do not confuse with:** palette sharing (which sprite's palette is reused).
+_Sources: `palette_formats.go`, `palette.go`_

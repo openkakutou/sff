@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 ---
 # Import and export more palette formats
 

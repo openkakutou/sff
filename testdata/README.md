@@ -60,6 +60,24 @@ Unmodified, standalone external-palette fixtures (`greenarrow-v1-palette1.act`,
 as-is, unlike the multi-megabyte `.sff` source files. Used by item 028's
 "index == linked index" and "external palette" scenarios.
 
+## `files/*.pal`, `files/*-palette*.png`, `files/aba-palette.act`
+
+Unmodified editing-format palette fixtures (item 010), copied byte-for-byte
+from real community character folders in the local corpus (see
+`.vibe/fixture-sources.md`), each a few KB:
+
+- `luigi-natural.pal` — `Nintendo/Luigi/color.pal`: JASC-PAL, CRLF, natural
+  order (first line = index 0, the magenta background).
+- `raiden-act-order.pal` — `King of Fighters/Raiden (XIII)/raiden01.pal`:
+  JASC-PAL, CRLF, a line-for-line text dump of a raw `.act` (first line =
+  index 255).
+- `kirby-palette-trns.png` — `Nintendo/Kirby HD/Palettes/1-Default.png`: a
+  sprite rendered with the palette, 256-entry `PLTE`, 1-byte `tRNS`.
+- `aba-palette-no-trns.png` / `aba-palette.act` — `Guilty Gear/A.B.A/pal/aba101.png`
+  and `aba101.act`: the same palette as indexed PNG (no `tRNS`) and as `.act`.
+
+See `.vibe/decisions/020-...md` for why these orders are what they are.
+
 ### Known caveat: `v2-loadmode1.sff`
 
 `kazuki-v2.sff`'s "on-demand" (`loadMode = 1`) sprite (item 029) is trimmed

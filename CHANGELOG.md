@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Palettes can now be imported from and exported to JASC .pal files (in standard order, or in the reversed order some community files use) and indexed PNG images, in addition to .act files; damaged or unsupported files are refused with a clear error.
+
 ## [0.5.2] - 2026-11-12
 
 ### Fixed

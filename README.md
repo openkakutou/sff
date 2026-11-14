@@ -7,6 +7,7 @@ A read/write Go library for MUGEN/Ikemen GO sprite sheet (`.sff`) files — v1 a
 - Reading and writing `.sff` v2 sprite sheets (sprite/palette tables, raw/RLE8/LZ5/PNG pixel formats, sprite and palette linking)
 - Resolving a sprite's palette into actual on-screen colors, including recoloring with an external `.act` palette file
 - Editing a palette's colors, with out-of-range values rejected instead of silently corrupted, and saving the edits back into either `.sff` file version or exporting them as a standalone `.act` file
+- Importing and exporting palettes as JASC `.pal` files (standard or reversed color order) and indexed PNG images, alongside `.act`
 - One-call resolution of a sprite's final on-screen pixels directly from a `.sff` file, by group/image reference
 - Decoding/encoding of individual pixel formats used inside `.sff` files (PCX for v1, raw/RLE8/LZ5/PNG for v2)
 - Validated against real, unmodified MUGEN/Ikemen GO community character files, not just hand-built test data
@@ -63,7 +64,7 @@ func main() {
 }
 ```
 
-Lower-level entry points are also available for callers that need more control: `Load` (all sprite groups in a file, version-agnostic), `ParseV1`/`ParseV2` plus their pixel/palette decoders, and `SerializeV1`/`SerializeV2` for writing files back out.
+Lower-level entry points are also available for callers that need more control: `Load` (all sprite groups in a file, version-agnostic), `ParseV1`/`ParseV2` plus their pixel/palette decoders, and `SerializeV1`/`SerializeV2` for writing files back out. Palettes can be read from or written to `.act` (`DecodeExternalPalette`/`EncodeExternalPalette`), JASC `.pal` (`DecodeJASCPalette`/`EncodeJASCPalette`, with a `PaletteOrder` for files stored in `.act` order) and indexed PNG (`DecodePNGPalette`/`EncodePNGPalette`, written as a 16×16 swatch).
 
 ### Decoding sprites in a web browser (WebAssembly)
 

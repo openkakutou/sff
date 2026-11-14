@@ -21,7 +21,7 @@ Four layers of coverage:
 
 ## Fixture corpus
 
-`testdata/files/*.sff`/`*.act` are small, trimmed fixtures built from real character files — not full-size (~329MB total upstream, not vendored). `testdata/gen/main.go` is the standalone regeneration tool that produces them; it is not part of the package's public API and is not run in CI. Regenerating fixtures requires a local checkout of the source files, pointed to via an environment variable:
+`testdata/files/*.sff`/`*.act` are small, trimmed fixtures built from real character files (the `.pal` and palette `.png` fixtures are copied unmodified, a few KB each) — not full-size (~329MB total upstream, not vendored). `testdata/gen/main.go` is the standalone regeneration tool that produces them; it is not part of the package's public API and is not run in CI. Regenerating fixtures requires a local checkout of the source files, pointed to via an environment variable:
 
 ```sh
 SRC_DIR=/path/to/sff-extractor/tests/files go run ./testdata/gen

@@ -46,3 +46,10 @@ Defined in: `v2.go`
 ## V1WriteSprite / V2WriteSprite / V2WritePalette
 Write-only input shapes for `SerializeV1`/`SerializeV2` — carry real bytes to embed (pixel data, palette bytes) rather than decoded/resolved data.
 Defined in: `v1_serializer.go`, `v2_serializer.go`
+
+## PaletteOrder
+| Value | Notes |
+|---|---|
+| PaletteOrderNatural | zero value; first `.pal` entry = index 0 (JASC standard) |
+| PaletteOrderReversed | `.act` storage order; entry j of N maps to index N-1-j |
+Defined in: `palette_formats.go`
