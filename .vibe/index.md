@@ -6,6 +6,7 @@
 - [`modules/wasm.md`](modules/wasm.md) — `cmd/wasm`, this repo's own WebAssembly entrypoint (backlog item 004): build-tag-gated `syscall/js` glue exposing `Load` and `ResolveSpritePixels` as JS-callable globals (`OpenKakutouSff.load`/`.resolveSprites`), mirroring `character`'s own `cmd/wasm` contract but built and released independently, verified by a Node.js smoke harness since `syscall/js` code cannot run under the plain Go toolchain
 
 ## Observed patterns
+- Sprite table editing (backlog item 011, decision `021`): `Add/Replace/RemoveV1Sprite`, `Add/Replace/RemoveV2Sprite`, `Add/RemoveV2Palette` (`v1_edit.go`, `v2_edit.go`) operate on the write-side slices and return fresh slices; removal repairs links (first dependent inherits, others relink, indices renumbered) and, for v1, re-checks every sprite's resolved pixels/palette against the reader rules, making a sprite self-sufficient when needed
 - Tests are co-located with source as `*_test.go`, one behavior per test function, named `Test<Subject>_<Expectation>` — one test file per source file
 - Read-path shapes that a parser needs more than the shared model can hold (file offsets, on-disk linking/sharing fields) get their own version-specific low-level type (`V1SpriteTable`, `V2SpriteTable`, `PCXImage`, `V2Image`) rather than being forced onto `Sprite`/`SpriteGroup`
 - Write-path functions (`SerializeV1`, `SerializeV2`, `EncodePCX`, `EncodeV2Sprite`) take their own write-only input types (`V1WriteSprite`, `V2WriteSprite`/`V2WritePalette`) carrying real bytes to embed, mirroring the read-path split

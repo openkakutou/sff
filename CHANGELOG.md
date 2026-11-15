@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Editors can now add a sprite to a sheet, replace a sprite's image, or remove a sprite, for both classic (v1) and newer (v2) sheets; removing a sprite that other sprites reuse keeps those sprites looking exactly the same, and an unused v2 palette can be removed too.
+
 ## [0.6.0] - 2026-11-14
 
 ### Added
