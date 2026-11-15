@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 ---
 # Sprite add, replace and remove with link repair
 
