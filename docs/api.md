@@ -56,6 +56,15 @@ Most consumers only need these two functions.
 | `SerializeV1(w io.Writer, version [4]byte, sharedPalette bool, sprites []V1WriteSprite) error` | Writes a full `.sff` v1 file. |
 | `SerializeV2(w io.Writer, version [4]byte, sprites []V2WriteSprite, palettes []V2WritePalette) error` | Writes a full `.sff` v2 file. |
 
+## Editing a sprite table
+
+These functions work on the write-side slices `SerializeV1`/`SerializeV2` take. Each returns a fresh slice and never modifies the input's elements (byte slices are shared, not copied). See `.vibe/decisions/021-sprite-table-editing-api-shape.md`.
+
+- `AddV1Sprite(sprites, s)` / `AddV2Sprite(sprites, palettes, s)` — append a sprite; a duplicate `(group, image)` key or an invalid link/palette index is an error.
+- `ReplaceV1Sprite(sprites, group, image, pixelData, palette)` / `ReplaceV2Sprite(sprites, group, image, V2SpritePixels)` — give a sprite new pixel data; a linked sprite becomes an owner, dependents keep following it.
+- `RemoveV1Sprite(sprites, group, image)` / `RemoveV2Sprite(sprites, group, image)` — remove a sprite; its first dependent inherits its data, other dependents relink to it, every link is renumbered. v1 removal re-checks each sprite's resolved pixels and palette and makes a sprite self-sufficient when the reader rules would otherwise change its result.
+- `AddV2Palette(palettes, p)` / `RemoveV2Palette(palettes, sprites, group, number)` — add or remove a v2 palette bank; removing a bank still used by a sprite is an error naming those sprites, otherwise every `PaletteIndex` is renumbered.
+
 ## Key types
 
 | Type | Shape |
