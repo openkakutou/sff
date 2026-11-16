@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-16
+
 ### Added
 
 - Classic (v1) sheets containing truecolor sprites now load completely: those sprites appear in their real colors, with their solid background color made transparent, instead of making the whole sheet fail to load.
@@ -71,7 +73,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Palette colors can now be edited and saved back for both v1 and v2 sprite files, and exported as a standalone `.act` palette file compatible with other MUGEN/Ikemen GO tools. Editing a color with an out-of-range value (outside 0-255) is rejected with a descriptive error instead of being silently corrupted.
 - Web apps can now load and decode `.sff` sprite sheets directly in the browser, without a Go toolchain, via a WebAssembly build. Every tagged release automatically publishes the WebAssembly module alongside its matching browser glue file as downloadable assets.
 
-[Unreleased]: https://github.com/openkakutou/sff/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/openkakutou/sff/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/openkakutou/sff/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/openkakutou/sff/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/openkakutou/sff/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/openkakutou/sff/compare/v0.5.1...v0.5.2
