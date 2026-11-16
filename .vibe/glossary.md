@@ -30,7 +30,7 @@ A sprite entry that carries no pixel data of its own (zero declared length) and 
 _Sources: `load.go`, `v1.go`, `v2_decoder.go`_
 
 ## Pixel encoding format
-The on-disk compression/encoding scheme a sprite's pixel data uses. v1 sprites use PCX (run-length-encoded indexed color). v2 sprites use one of: raw (uncompressed indexed), RLE8 (run-length-encoded indexed), LZ5 (dictionary-compressed indexed), or PNG8/24/32 (indexed or direct-color, via standard PNG).
+The on-disk compression/encoding scheme a sprite's pixel data uses. v1 sprites use PCX (run-length-encoded indexed color; a 3-plane v1 PCX instead decodes to direct RGB, `BytesPerPixel` 3, see decision 022). v2 sprites use one of: raw (uncompressed indexed), RLE8 (run-length-encoded indexed), LZ5 (dictionary-compressed indexed), or PNG8/24/32 (indexed or direct-color, via standard PNG).
 _Sources: `pcx.go`, `v2_decoder.go`_
 
 ## Palette file order

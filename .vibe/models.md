@@ -28,7 +28,7 @@ Enum selecting how index 0 is treated when resolving indexed pixel data to RGBA:
 Defined in: `palette.go`
 
 ## PCXImage
-Decoded v1 pixel buffer: index buffer + width/height, produced by `DecodePCX`/`ResolveV1Pixels`.
+Decoded v1 pixel buffer: pixel bytes + width/height + `BytesPerPixel` (1, or 0 = indexed; 3 = interleaved RGB, decision 022), produced by `DecodePCX`/`ResolveV1Pixels`.
 Defined in: `pcx.go`
 
 ## V2Image

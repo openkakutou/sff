@@ -185,6 +185,7 @@ func bytesEqual(a, b []byte) bool {
 func FuzzDecodePCX(f *testing.F) {
 	f.Add(mustEncodePCXFuzz(f, &PCXImage{Width: 3, Height: 2, Pixels: []byte{1, 2, 3, 4, 4, 4}}))
 	f.Add(mustEncodePCXFuzz(f, &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}}))
+	f.Add(append(buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2), 1, 2, 3, 4, 5, 6))
 	f.Add(make([]byte, pcxHeaderSize))
 	f.Add([]byte{})
 
@@ -193,8 +194,8 @@ func FuzzDecodePCX(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if len(img.Pixels) != img.Width*img.Height {
-			t.Fatalf("len(Pixels)=%d, want %dx%d", len(img.Pixels), img.Width, img.Height)
+		if len(img.Pixels) != img.Width*img.Height*img.BytesPerPixel {
+			t.Fatalf("len(Pixels)=%d, want %dx%dx%d", len(img.Pixels), img.Width, img.Height, img.BytesPerPixel)
 		}
 	})
 }
@@ -206,4 +207,87 @@ func mustEncodePCXFuzz(f *testing.F, img *PCXImage) []byte {
 		f.Fatalf("EncodePCX: %v", err)
 	}
 	return data
+}
+
+func TestDecodePCX_ThreePlane_DecodesRGBRowsIntoInterleavedPixels(t *testing.T) {
+	// 2x2, bytesPerLine 2. Each scanline is an R row, a G row, a B row.
+	data := buildPCXHeader(1, 8, 0, 0, 1, 1, 3, 2)
+	data = append(data, 10, 20, 30, 40, 50, 60)    // row 0: R(10,20) G(30,40) B(50,60)
+	data = append(data, 70, 80, 90, 100, 110, 120) // row 1: R(70,80) G(90,100) B(110,120)
+	data = append(data, 0x0C)                      // trailing byte real files end with
+
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatalf("DecodePCX returned error: %v", err)
+	}
+	if img.Width != 2 || img.Height != 2 || img.BytesPerPixel != 3 {
+		t.Fatalf("got %dx%d bpp=%d, want 2x2 bpp=3", img.Width, img.Height, img.BytesPerPixel)
+	}
+	want := []byte{10, 30, 50, 20, 40, 60, 70, 90, 110, 80, 100, 120}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodePCX_ThreePlane_OddWidthIgnoresPerPlanePadding(t *testing.T) {
+	// Width 3, bytesPerLine 4: each plane row carries one padding byte (99).
+	data := buildPCXHeader(1, 8, 0, 0, 2, 0, 3, 4)
+	data = append(data, 1, 2, 3, 99, 4, 5, 6, 99, 7, 8, 9, 99)
+
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatalf("DecodePCX returned error: %v", err)
+	}
+	want := []byte{1, 4, 7, 2, 5, 8, 3, 6, 9}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodePCX_ThreePlane_RunCrossingPlaneBoundaryFillsBothPlanes(t *testing.T) {
+	// 2x1, bytesPerLine 2: the scanline is 6 bytes 5,7,7,7,7,9 =
+	// R(5,7) G(7,7) B(7,9). The run of four 7s spans R, G and B.
+	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2)
+	data = append(data, 0x05, 0xC4, 0x07, 0x09)
+
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatalf("DecodePCX returned error: %v", err)
+	}
+	want := []byte{5, 7, 7, 7, 7, 9}
+	if !bytesEqual(img.Pixels, want) {
+		t.Fatalf("got Pixels=%v, want %v", img.Pixels, want)
+	}
+}
+
+func TestDecodePCX_ThreePlane_TruncatedScanlineReturnsError(t *testing.T) {
+	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2)
+	data = append(data, 1, 2, 3, 4, 5) // 5 of the 6 bytes the scanline needs
+
+	if _, err := DecodePCX(data); err == nil {
+		t.Fatal("expected an error for truncated 3-plane data, got nil")
+	}
+}
+
+func TestDecodePCX_UnsupportedPlaneCounts_ReturnError(t *testing.T) {
+	for _, planes := range []byte{2, 4} {
+		data := buildPCXHeader(1, 8, 0, 0, 1, 0, planes, 2)
+		data = append(data, make([]byte, 16)...)
+		if _, err := DecodePCX(data); err == nil {
+			t.Errorf("planes=%d: expected an error, got nil", planes)
+		}
+	}
+}
+
+func TestDecodePCX_SinglePlane_ReportsOneBytePerPixel(t *testing.T) {
+	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 1, 2)
+	data = append(data, 3, 4)
+
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatalf("DecodePCX returned error: %v", err)
+	}
+	if img.BytesPerPixel != 1 {
+		t.Fatalf("got BytesPerPixel=%d, want 1", img.BytesPerPixel)
+	}
 }

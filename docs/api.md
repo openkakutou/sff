@@ -11,7 +11,7 @@ Most consumers only need these two functions.
 | Function | Signature | Purpose |
 |---|---|---|
 | `Load` | `Load(r io.ReaderAt) ([]SpriteGroup, error)` | Parses a full `.sff` file (v1 or v2, auto-detected) into the version-agnostic `SpriteGroup`/`Sprite` model — every sprite in the file, grouped. |
-| `ResolveSpritePixels` | `ResolveSpritePixels(r io.ReaderAt, group, image int, override *Palette) ([]color.RGBA, int, int, error)` | Resolves one sprite (by `group`/`image`) all the way to final on-screen pixels: decode + palette resolution in one call. `override` is an optional external palette (e.g. from `DecodeExternalPalette`); `nil` uses the sprite's own. Returns `(pixels, width, height, error)`. An unmatched `(group, image)` returns an error prefixed `"sprite not found: "`, distinguishable from every other failure. |
+| `ResolveSpritePixels` | `ResolveSpritePixels(r io.ReaderAt, group, image int, override *Palette) ([]color.RGBA, int, int, error)` | Resolves one sprite (by `group`/`image`) all the way to final on-screen pixels: decode + palette resolution in one call. A 3-plane (24-bit) v1 sprite returns its real RGB colours directly: palette and `override` have no effect, and pixels equal to the top-left pixel are transparent. `override` is an optional external palette (e.g. from `DecodeExternalPalette`); `nil` uses the sprite's own. Returns `(pixels, width, height, error)`. An unmatched `(group, image)` returns an error prefixed `"sprite not found: "`, distinguishable from every other failure. |
 
 ## Version-specific parsing
 
@@ -26,9 +26,9 @@ Most consumers only need these two functions.
 
 | Function | Purpose |
 |---|---|
-| `DecodePCX(data []byte) (*PCXImage, error)` | Decodes v1's RLE-compressed PCX pixel format. |
+| `DecodePCX(data []byte) (*PCXImage, error)` | Decodes v1's RLE-compressed PCX pixel format: 1 plane (palette indices, `BytesPerPixel` 1) or 3 planes (24-bit, returned as interleaved R,G,B with `BytesPerPixel` 3). |
 | `EncodePCX(img *PCXImage) ([]byte, error)` | Encodes pixel data back to PCX. |
-| `ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error)` | Decodes sprite `i`'s pixels, following v1's sprite-linking rule (a zero-length sprite inherits the immediately preceding sprite's pixel data). |
+| `ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error)` | Decodes sprite `i`'s pixels, following v1's sprite-linking rule (a zero-length sprite inherits the immediately preceding sprite's pixel data). A 3-plane (direct RGB) sprite returns `BytesPerPixel` 3; check it before using a palette. |
 | `DecodeV2Sprite(format, width, height, colorDepth int, data []byte) (*V2Image, error)` | Decodes a v2 sprite's pixel data — raw, RLE8, RLE5, LZ5, or PNG8/24/32, depending on `format`. RLE5 support (unlike every other format here) has never been validated against a real file — see `.vibe/decisions/014-v2-rle5-decode-and-encode-implemented-without-a-real-fixture.md`. |
 | `EncodeV2Sprite(format int, img *V2Image) ([]byte, error)` | Encodes pixel data back to v2's raw, RLE8, RLE5, LZ5, or PNG8/24/32 formats. Same RLE5 caveat as `DecodeV2Sprite`. |
 
@@ -45,7 +45,7 @@ Most consumers only need these two functions.
 | `DecodePNGPalette(data []byte) (Palette, error)` / `EncodePNGPalette(p Palette) ([]byte, error)` | Extracts the palette of an indexed PNG (errors on non-indexed PNG) / writes a 16x16 swatch PNG where pixel `i` uses palette index `i`. Same alpha rule as `.act`: tRNS values are ignored on import, index 0 is transparent on export. |
 | `PaletteOrder` (`PaletteOrderNatural`, `PaletteOrderReversed`) | Entry order of a `.pal` file: natural = first entry is index 0 (default); reversed = raw `.act` storage order (first entry of 256 is index 255; for N entries, entry `j` is index `N-1-j`). |
 | `(*Palette).SetColor(index, r, g, b, a int) error` | Edits the color at `index` to `(r, g, b, a)`. Returns a descriptive error and leaves the palette unchanged if `index` or any component is outside `[0, 255]`, instead of silently wrapping (e.g. a raw `uint8(300)` conversion). This is the validated entry point for editing a `Palette` from caller-supplied integers. |
-| `ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Palette) (Palette, error)` | Resolves sprite `i`'s effective palette — its own, an inherited one (palette sharing), or `override` if non-nil. |
+| `ResolveV1Palette(table *V1SpriteTable, r io.ReaderAt, i int, override *Palette) (Palette, error)` | Resolves sprite `i`'s effective palette — its own, an inherited one (palette sharing), or `override` if non-nil. A 3-plane (direct RGB) sprite has no palette: this is not detected: with Length >= 768 it returns the last 768 pixel-data bytes as a meaningless palette without error (as in Ikemen GO); a non-shared sprite with Length < 768 gets the "smaller than the 768-byte palette block" error; an inheriting sprite gets whatever its source gets. So check `PCXImage.BytesPerPixel` first. |
 | `ResolveV2Palette(table *V2SpriteTable, r io.ReaderAt, index int, override *Palette) (Palette, error)` | v2 equivalent, resolving a palette bank index. |
 | `ResolvePixels(indices []byte, palette Palette, rule AlphaRule) []color.RGBA` | Applies a resolved `Palette` to indexed pixel data, per an `AlphaRule` (forced-transparent-at-index-0 vs. literal alpha — format-dependent). |
 
@@ -74,7 +74,7 @@ These functions work on the write-side slices `SerializeV1`/`SerializeV2` take. 
 | `AlphaRule` | Selects how index 0 is treated when resolving indexed pixels to RGBA. |
 | `V1SpriteTable` / `V1Header` / `V1SpriteEntry` | Low-level v1 read-path shapes, as parsed from the file's binary layout. |
 | `V2SpriteTable` / `V2Header` / `V2SpriteEntry` / `V2PaletteEntry` | Low-level v2 read-path shapes. |
-| `PCXImage` / `V2Image` | Decoded pixel-buffer shapes (index buffer + dimensions + bytes-per-pixel), version-specific. |
+| `PCXImage` / `V2Image` | Decoded pixel-buffer shapes (pixel buffer + dimensions + bytes-per-pixel), version-specific. `PCXImage.BytesPerPixel` is 1 (or 0, hand-built) for palette indices, 3 for interleaved RGB (decision 022). |
 | `V1WriteSprite` / `V2WriteSprite` / `V2WritePalette` | Write-only input shapes for `SerializeV1`/`SerializeV2`. |
 
 ## Error conventions

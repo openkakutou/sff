@@ -2,6 +2,7 @@ package sff
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
@@ -21,6 +22,9 @@ const maxRunLength = 63
 // .vibe/decisions/005-sff-v1-serialize-is-semantic-not-byte-exact-round-trip.md.
 // Every unit produced is guaranteed decodable by DecodePCX.
 func EncodePCX(img *PCXImage) ([]byte, error) {
+	if img.BytesPerPixel == 3 {
+		return nil, errors.New("sff: pcx: 3-plane encode not supported")
+	}
 	if img.Width <= 0 || img.Height <= 0 {
 		return nil, fmt.Errorf("sff: pcx: invalid image dimensions %dx%d, both must be positive", img.Width, img.Height)
 	}
@@ -42,7 +46,7 @@ func EncodePCX(img *PCXImage) ([]byte, error) {
 	binary.LittleEndian.PutUint16(header[6:8], 0)
 	binary.LittleEndian.PutUint16(header[8:10], uint16(img.Width-1))
 	binary.LittleEndian.PutUint16(header[10:12], uint16(img.Height-1))
-	header[65] = 1 // color planes
+	header[pcxPlanesOffset] = 1 // color planes
 	binary.LittleEndian.PutUint16(header[66:68], uint16(bytesPerLine))
 
 	data := make([]byte, len(header))

@@ -59,6 +59,11 @@ func main() {
 		{"v1-same-palette-a.sff", "gray-v1.sff", 1, 0, 0},
 		{"v1-same-palette-a-group5.sff", "gray-v1.sff", 1, 5, 0},
 		{"v1-same-palette-b.sff", "lucifer-v1.sff", 1, 0, 0},
+		// backlog item 012 / decision 022: a real 3-plane (24-bit) PCX
+		// sprite (Donkey Kong SD, group 2000 image 18), which carries no
+		// 768-byte palette block. SRC_DIR must hold the source file under
+		// this name (e.g. a symlink).
+		{"v1-pcx-3plane.sff", "dk-sd-v1.sff", 1, 2000, 18},
 
 		{"v2-rle8.sff", "kfm-v2.sff", 2, 9000, 1},
 		{"v2-lz5.sff", "kfm-v2.sff", 2, 0, 0},
@@ -274,6 +279,25 @@ func trimV1(data []byte, sc scenario) ([]byte, error) {
 		return nil, err
 	}
 	paletteOwner := resolvePaletteOwnerV1(table, idx)
+
+	// A 3-plane PCX sprite owns no palette block: its whole declared Length
+	// is pixel data (see decision 022), so it is copied as-is with no
+	// palette bytes.
+	isRGB := false
+	if pixelOwner == idx && !target.SharedPalette {
+		// A sprite that fails to decode is not 3-plane: keep the regular
+		// trim, so scenarios built on undecodable sprites still generate.
+		if img, err := sff.ResolveV1Pixels(table, readerAt(data), idx); err == nil {
+			isRGB = img.BytesPerPixel == 3
+		}
+	}
+	if isRGB {
+		return encodeV1(table.Header, []v1Sprite{{
+			group: target.Group, image: target.Image, axisX: target.AxisX, axisY: target.AxisY,
+			linkedIndex: -1,
+			pixel:       data[target.Offset : target.Offset+int64(target.Length)],
+		}})
+	}
 
 	var sprites []v1Sprite
 

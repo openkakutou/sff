@@ -161,6 +161,10 @@ func loadV1SpriteSize(table *V1SpriteTable, r io.ReaderAt, i int, sprites []Spri
 // uses this internally) gets the same result Load itself would derive
 // dimensions from, without having to reimplement the linking rule.
 // Mirrors ResolveV1Palette's public shape.
+//
+// A 3-plane (direct RGB) sprite comes back with BytesPerPixel 3 and no
+// palette: callers check PCXImage.BytesPerPixel before pairing the pixels
+// with ResolveV1Palette (see its doc comment).
 func ResolveV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, error) {
 	if i < 0 || i >= len(table.Sprites) {
 		return nil, fmt.Errorf("sff: v1 pixels: sprite index %d out of range (have %d sprites)", i, len(table.Sprites))
@@ -238,30 +242,27 @@ func decodeV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, erro
 	// declares Length inclusive of its own trailing palette block — see
 	// ResolveV1Palette — so the real pixel-only byte count is shorter than
 	// Length by that fixed size.
-	pixelLen := int64(e.Length)
-	if !e.SharedPalette {
-		pixelLen -= V1PaletteBlockSize
-		if pixelLen < 0 {
-			return nil, fmt.Errorf("sprite %d: declared length %d is smaller than the %d-byte palette block it must contain", i, e.Length, V1PaletteBlockSize)
-		}
-	}
-
-	if err := checkDataLength("v1 sprite", int(pixelLen)); err != nil {
+	//
+	// Exception: a 3-plane PCX carries no palette block, its stream fills
+	// the whole declared Length — see
+	// .vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md. The
+	// plane count is only known once the data is read, so the whole declared
+	// span is read (once) and the trailing block is cut afterwards, only
+	// when the data is not 3-plane.
+	if err := checkDataLength("v1 sprite", int(e.Length)); err != nil {
 		return nil, err
 	}
-	raw := make([]byte, pixelLen)
+	raw := make([]byte, e.Length)
 	if _, err := r.ReadAt(raw, e.Offset); err != nil {
 		// A SharedPalette sprite's declared Length can still, on some real
 		// files, overstate what's actually left in the file by exactly a
 		// palette block's worth of bytes — observed so far only on a
 		// file's last sprite that owns real pixel data (see backlog item
 		// 007's corpus scan). Retry once as if it were palette-block-
-		// inclusive, the same subtraction a SharedPalette-false sprite's
-		// Length already gets above, before giving up. See
+		// inclusive before giving up. See
 		// .vibe/decisions/017-v1-last-shared-palette-sprite-trailing-block.md.
 		if e.SharedPalette && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
-			shorter := pixelLen - V1PaletteBlockSize
-			if shorter >= 0 {
+			if shorter := int64(e.Length) - V1PaletteBlockSize; shorter >= 0 {
 				raw2 := make([]byte, shorter)
 				if _, err2 := r.ReadAt(raw2, e.Offset); err2 == nil {
 					raw = raw2
@@ -273,8 +274,14 @@ func decodeV1Pixels(table *V1SpriteTable, r io.ReaderAt, i int) (*PCXImage, erro
 			return nil, fmt.Errorf("reading pixel data: %w", err)
 		}
 	}
+	if !e.SharedPalette && !isPCX3Plane(raw) {
+		if len(raw) < V1PaletteBlockSize {
+			return nil, fmt.Errorf("sprite %d: declared length %d is smaller than the %d-byte palette block it must contain", i, e.Length, V1PaletteBlockSize)
+		}
+		raw = raw[:len(raw)-V1PaletteBlockSize]
+	}
 	if w, h, ok := peekPCXDimensions(raw); ok && int64(w)*int64(h) >= v1MaxPixelCount {
-		return &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}}, nil
+		return &PCXImage{Width: 1, Height: 1, BytesPerPixel: 1, Pixels: []byte{0}}, nil
 	}
 	return DecodePCX(raw)
 }

@@ -14,6 +14,7 @@ package sff
 
 import (
 	"bytes"
+	"image/color"
 	"os"
 	"path/filepath"
 	"testing"
@@ -259,4 +260,126 @@ func BenchmarkResolveSpritePixels_V1LargeSheet(b *testing.B) {
 
 func BenchmarkResolveSpritePixels_V2LargeSheet(b *testing.B) {
 	benchmarkResolveSpritePixels(b, buildLargeV2Sheet(b))
+}
+
+// The v1-pcx-3plane.sff fixture is a real 3-plane (24-bit) sprite (Donkey
+// Kong SD, group 2000 image 18, 52x52, magenta background) — see
+// .vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md. Expected
+// colors below were read once with a separate throwaway Python PCX decoder.
+
+func resolve3PlaneFixture(t *testing.T, override *Palette) ([]color.RGBA, int, int) {
+	t.Helper()
+	f := openTestdataFile(t, "v1-pcx-3plane.sff")
+	defer f.Close()
+	got, w, h, err := ResolveSpritePixels(f, 2000, 18, override)
+	if err != nil {
+		t.Fatalf("ResolveSpritePixels: %v", err)
+	}
+	return got, w, h
+}
+
+func TestResolveSpritePixels_ThreePlaneSprite_ReturnsRealColorsWithKeyColorTransparent(t *testing.T) {
+	got, w, h := resolve3PlaneFixture(t, nil)
+	if w != 52 || h != 52 || len(got) != 52*52 {
+		t.Fatalf("got %dx%d with %d pixels, want 52x52 with %d", w, h, len(got), 52*52)
+	}
+	if got[0].A != 0 {
+		t.Errorf("top-left pixel = %v, want fully transparent", got[0])
+	}
+	if want := (color.RGBA{192, 64, 136, 255}); got[0*52+21] != want {
+		t.Errorf("pixel (21,0) = %v, want %v", got[0*52+21], want)
+	}
+	if want := (color.RGBA{232, 96, 200, 255}); got[36*52+4] != want {
+		t.Errorf("pixel (4,36) = %v, want %v", got[36*52+4], want)
+	}
+	opaque := 0
+	for _, p := range got {
+		if p.A == 255 {
+			opaque++
+		}
+	}
+	if opaque != 196 {
+		t.Errorf("opaque pixel count = %d, want 196", opaque)
+	}
+}
+
+func TestResolveSpritePixels_ThreePlaneSprite_IgnoresOverridePalette(t *testing.T) {
+	var override Palette
+	for i := range override {
+		override[i] = color.RGBA{1, 2, 3, 255}
+	}
+	want, _, _ := resolve3PlaneFixture(t, nil)
+	got, _, _ := resolve3PlaneFixture(t, &override)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("pixel %d = %v with override, want %v (override must have no effect)", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveSpritePixels_ThreePlaneSpriteShorterThanPaletteBlock_ResolvesWithoutPaletteError(t *testing.T) {
+	// 2x2, bytesPerLine 2: 128-byte header + 12 data bytes = 140 bytes,
+	// well under the 768 bytes an indexed sprite's palette block needs.
+	pcx := buildPCXHeader(1, 8, 0, 0, 1, 1, 3, 2)
+	pcx = append(pcx, 10, 20, 30, 40, 50, 60)    // row 0: R(10,20) G(30,40) B(50,60)
+	pcx = append(pcx, 70, 80, 90, 100, 110, 120) // row 1: R(70,80) G(90,100) B(110,120)
+	data := buildV1File(t, 1, 1, false, []v1SubfileSpec{
+		{length: uint32(len(pcx)), group: 2000, image: 20, pixelDataLen: len(pcx)},
+	})
+	copy(data[len(data)-len(pcx):], pcx)
+
+	got, w, h, err := ResolveSpritePixels(bytes.NewReader(data), 2000, 20, nil)
+	if err != nil {
+		t.Fatalf("ResolveSpritePixels: %v", err)
+	}
+	if w != 2 || h != 2 {
+		t.Fatalf("got %dx%d, want 2x2", w, h)
+	}
+	if want := (color.RGBA{20, 40, 60, 255}); got[1] != want {
+		t.Errorf("pixel (1,0) = %v, want %v", got[1], want)
+	}
+	if want := (color.RGBA{80, 100, 120, 255}); got[3] != want {
+		t.Errorf("pixel (1,1) = %v, want %v", got[3], want)
+	}
+}
+
+func TestResolveSpritePixels_ZeroLengthSpriteLinkedToThreePlaneOwner_ReturnsOwnersPixelsAndLoadsSameSize(t *testing.T) {
+	pcx := buildPCXHeader(1, 8, 0, 0, 1, 1, 3, 2)
+	pcx = append(pcx, 10, 20, 30, 40, 50, 60)
+	pcx = append(pcx, 70, 80, 90, 100, 110, 120)
+	data := buildV1File(t, 1, 2, false, []v1SubfileSpec{
+		{length: uint32(len(pcx)), group: 2000, image: 20, pixelDataLen: len(pcx)},
+		{length: 0, group: 2000, image: 21, pixelDataLen: 0},
+	})
+	copy(data[headerSize+subheaderSize:], pcx) // sprite 0's pixel data
+
+	owner, ow, oh, err := ResolveSpritePixels(bytes.NewReader(data), 2000, 20, nil)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	got, w, h, err := ResolveSpritePixels(bytes.NewReader(data), 2000, 21, nil)
+	if err != nil {
+		t.Fatalf("linked: %v", err)
+	}
+	if w != 2 || h != 2 || ow != 2 || oh != 2 || len(got) != 4 {
+		t.Fatalf("got %dx%d (%d px), owner %dx%d, want 2x2", w, h, len(got), ow, oh)
+	}
+	for i := range got {
+		if got[i] != owner[i] {
+			t.Fatalf("pixel %d = %v, owner has %v", i, got[i], owner[i])
+		}
+	}
+	if want := (color.RGBA{80, 100, 120, 255}); got[3] != want {
+		t.Errorf("pixel (1,1) = %v, want %v", got[3], want)
+	}
+	groups, err := Load(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(groups) != 1 || len(groups[0].Sprites) != 2 {
+		t.Fatalf("got %d groups, want 1 with 2 sprites", len(groups))
+	}
+	if s := groups[0].Sprites[1]; s.Image != 21 || s.Width != 2 || s.Height != 2 {
+		t.Errorf("linked sprite: image %d %dx%d, want image 21 2x2", s.Image, s.Width, s.Height)
+	}
 }

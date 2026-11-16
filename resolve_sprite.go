@@ -20,7 +20,10 @@ const SpritePixelDimensionLimit = 4096
 // is — to its final on-screen RGBA pixels: decoding its pixel data,
 // resolving its palette (or using override in its place, if non-nil), and
 // applying that palette. override is ignored for a v2 direct-color sprite
-// (PNG24/PNG32), which has no palette of its own to replace.
+// (PNG24/PNG32) and for a v1 3-plane (24-bit) PCX sprite, which have no
+// palette of their own to replace; the latter's pixels equal to its
+// top-left pixel are transparent (see
+// .vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md).
 //
 // Returns a descriptive error, prefixed "sprite not found: " specifically
 // when no sprite matches (group, image) — distinct from every other
@@ -64,6 +67,13 @@ func resolveSpritePixelsV1(r io.ReaderAt, group, image int, override *Palette) (
 	}
 	if err := checkSpriteDimensions(img.Width, img.Height); err != nil {
 		return nil, 0, 0, err
+	}
+
+	// A 3-plane PCX sprite already carries its own colors (decision 022):
+	// no palette or override applies. Its background is a solid key color,
+	// taken from the top-left pixel and made transparent.
+	if img.BytesPerPixel == 3 {
+		return threePlanePixelsToRGBA(img), img.Width, img.Height, nil
 	}
 
 	pal, err := ResolveV1Palette(table, r, i, override)
@@ -123,6 +133,23 @@ func resolveSpritePixelsV2(r io.ReaderAt, group, image int, override *Palette) (
 		rule = AlphaLiteral
 	}
 	return ResolvePixels(img.Pixels, pal, rule), img.Width, img.Height, nil
+}
+
+// threePlanePixelsToRGBA converts a decoded 3-plane PCXImage into
+// []color.RGBA, opaque except every pixel equal to the top-left pixel's
+// color, which is fully transparent. See
+// .vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md.
+func threePlanePixelsToRGBA(img *PCXImage) []color.RGBA {
+	n := img.Width * img.Height
+	out := make([]color.RGBA, n)
+	key := color.RGBA{R: img.Pixels[0], G: img.Pixels[1], B: img.Pixels[2], A: 255}
+	for i := 0; i < n; i++ {
+		c := color.RGBA{R: img.Pixels[i*3], G: img.Pixels[i*3+1], B: img.Pixels[i*3+2], A: 255}
+		if c != key {
+			out[i] = c
+		}
+	}
+	return out
 }
 
 // directColorPixelsToRGBA converts a decoded direct-color V2Image (24-bit

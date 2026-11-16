@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -771,5 +772,117 @@ func TestLoad_V1Fixtures_DimensionsMatchResolveV1PixelsPerSprite(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoad_ThreePlanePCXSprite_ReportsItsDimensions(t *testing.T) {
+	f := openTestdataFile(t, "v1-pcx-3plane.sff")
+	defer f.Close()
+
+	groups, err := Load(f)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(groups) != 1 || len(groups[0].Sprites) != 1 {
+		t.Fatalf("got %d groups, want one group with one sprite", len(groups))
+	}
+	s := groups[0].Sprites[0]
+	if groups[0].Index != 2000 || s.Image != 18 || s.Width != 52 || s.Height != 52 {
+		t.Fatalf("got group %d image %d %dx%d, want group 2000 image 18 52x52", groups[0].Index, s.Image, s.Width, s.Height)
+	}
+}
+
+// build3PlaneOwnerV1File returns a v1 file whose only sprite is a 2x1 3-plane
+// PCX padded with trailing filler to the given total declared Length, flagged
+// SharedPalette=false (so no palette block is appended or expected).
+func build3PlaneOwnerV1File(t *testing.T, declaredLen int) []byte {
+	t.Helper()
+	pcx := buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2)
+	pcx = append(pcx, 10, 20, 30, 40, 50, 60)
+	pcx = append(pcx, make([]byte, declaredLen-len(pcx))...)
+	data := serializeV1ForTest(t, true, []V1WriteSprite{{Group: 0, Image: 0, SharedPalette: true, PixelData: pcx}})
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("test setup: ParseV1: %v", err)
+	}
+	if int(table.Sprites[0].Length) != declaredLen {
+		t.Fatalf("test setup: Length %d, want %d", table.Sprites[0].Length, declaredLen)
+	}
+	data[table.Sprites[0].Offset-32+18] = 0 // SharedPalette=false
+	return data
+}
+
+func TestLoad_V1NonSharedThreePlaneSpriteShorterThanPaletteBlockPlusHeader_Resolves(t *testing.T) {
+	for _, declaredLen := range []int{768, 800, 833} {
+		data := build3PlaneOwnerV1File(t, declaredLen)
+		table, err := ParseV1(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("ParseV1: %v", err)
+		}
+		if table.Sprites[0].SharedPalette {
+			t.Fatal("test setup: sprite must be SharedPalette=false")
+		}
+		groups, err := Load(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("Length %d: Load returned error: %v", declaredLen, err)
+		}
+		if s := groups[0].Sprites[0]; s.Width != 2 || s.Height != 1 {
+			t.Errorf("Length %d: got %dx%d, want 2x1", declaredLen, s.Width, s.Height)
+		}
+		img, err := ResolveV1Pixels(table, bytes.NewReader(data), 0)
+		if err != nil {
+			t.Fatalf("Length %d: ResolveV1Pixels: %v", declaredLen, err)
+		}
+		if want := []byte{10, 30, 50, 20, 40, 60}; img.BytesPerPixel != 3 || !bytesEqual(img.Pixels, want) {
+			t.Errorf("Length %d: got bpp=%d Pixels=%v, want bpp=3 %v", declaredLen, img.BytesPerPixel, img.Pixels, want)
+		}
+	}
+}
+
+func TestLoad_V1NonSharedOnePlaneSpriteShorterThanPaletteBlock_ReturnsPaletteBlockError(t *testing.T) {
+	pcx := mustEncodePCX(t, &PCXImage{Width: 2, Height: 1, Pixels: []byte{1, 2}})
+	data := serializeV1ForTest(t, true, []V1WriteSprite{{Group: 0, Image: 0, SharedPalette: true, PixelData: pcx}})
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	data[table.Sprites[0].Offset-32+18] = 0 // SharedPalette=false, Length stays < 768
+
+	_, err = Load(bytes.NewReader(data))
+	if err == nil || !strings.Contains(err.Error(), "smaller than the 768-byte palette block") {
+		t.Fatalf("got error %v, want the palette-block-too-small error", err)
+	}
+}
+
+func TestLoad_V1ThreePlaneSpriteDeclaredLengthPastEOF_ReturnsReadError(t *testing.T) {
+	data := build3PlaneOwnerV1File(t, 800)
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	truncated := data[:len(data)-100]
+
+	_, err = Load(bytes.NewReader(truncated))
+	if err == nil || !strings.Contains(err.Error(), "reading pixel data") {
+		t.Fatalf("got error %v, want a read error", err)
+	}
+	if _, err := ResolveV1Pixels(table, bytes.NewReader(truncated), 0); err == nil {
+		t.Fatal("ResolveV1Pixels: expected a read error, got nil")
+	}
+}
+
+func TestResolveV1Pixels_OversizedHeaderDimensions_FallsBackToOneByOneIndexedPixel(t *testing.T) {
+	pcx := buildPCXHeader(1, 8, 0, 0, 65535, 65535, 1, 65536)
+	data := serializeV1ForTest(t, true, []V1WriteSprite{{Group: 0, Image: 0, SharedPalette: true, PixelData: pcx}})
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	img, err := ResolveV1Pixels(table, bytes.NewReader(data), 0)
+	if err != nil {
+		t.Fatalf("ResolveV1Pixels: %v", err)
+	}
+	if img.Width != 1 || img.Height != 1 || img.BytesPerPixel != 1 || len(img.Pixels) != 1 {
+		t.Fatalf("got %dx%d bpp=%d len=%d, want 1x1 bpp=1 len=1", img.Width, img.Height, img.BytesPerPixel, len(img.Pixels))
 	}
 }

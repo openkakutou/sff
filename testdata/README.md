@@ -13,6 +13,10 @@ Downloaded from `github.com/ikemen-launcher/sff-extractor`, commit
 - `tests/files/*.sff` / `*.act` → trimmed into `files/*.sff` (see below)
 - `tests/sprites/*.png` → copied unmodified into `sprites/*.png`
 
+`files/v1-pcx-3plane.sff` is the exception: it is not from sff-extractor but
+trimmed from the local corpus file `dk-sd-v1.sff` (a real 3-plane sprite) —
+see `.vibe/fixture-sources.md`.
+
 ## `sprites/*.png`
 
 Unmodified. These are the reference project's own JS-generated

@@ -82,9 +82,13 @@ func scanFileSprites(f io.ReaderAt) (total int, knownGaps map[string]int, failur
 	}
 	for i, e := range table.Sprites {
 		total++
-		if _, err := resolveV1Pixels(table, f, i); err != nil {
+		img, err := resolveV1Pixels(table, f, i)
+		if err != nil {
 			failures = append(failures, spriteFailure{e.Group, e.Image, err})
 			continue
+		}
+		if img.BytesPerPixel == 3 {
+			continue // 3-plane PCX: direct color, no palette block (decision 022)
 		}
 		if _, err := ResolveV1Palette(table, f, i, nil); err != nil {
 			failures = append(failures, spriteFailure{e.Group, e.Image, fmt.Errorf("palette: %w", err)})
@@ -183,22 +187,17 @@ func (truncatedReaderAt) ReadAt(_ []byte, _ int64) (int, error) {
 	return 0, fmt.Errorf("simulated truncated read")
 }
 
-// pcx3PlaneGapName and corruptSourceFileGapName label backlog item 007's
-// own two remaining, individually-diagnosed corpus gaps (see
-// .vibe/fixture-sources.md's "Corpus compatibility scan results" and
-// .vibe/decisions/018-pcx-3-plane-and-confirmed-corrupt-files-are-permanent-gaps.md):
-//   - pcx3PlaneGapName: a 3-plane (24-bit truecolor) PCX sprite — this
-//     decoder only ever supported the 1-plane (8-bit indexed) shape real
-//     MUGEN/Ikemen sprites normally use; a deliberate, permanent scope cut,
-//     the same kind of accepted gap v2LinkedSpriteGapName already is.
-//   - corruptSourceFileGapName: a specific real file whose declared data is
-//     internally inconsistent in a way no still-undiscovered inheritance
-//     or layout rule explains — confirmed corrupt/malformed source data,
-//     not a decoder defect.
-const (
-	pcx3PlaneGapName         = "PCX 3-plane (24-bit truecolor) sprite — unsupported, permanent scope cut"
-	corruptSourceFileGapName = "confirmed corrupt/inconsistent real source file"
-)
+// corruptSourceFileGapName labels backlog item 007's remaining,
+// individually-diagnosed corpus gap (see .vibe/fixture-sources.md's
+// "Corpus compatibility scan results" and
+// .vibe/decisions/018-pcx-3-plane-and-confirmed-corrupt-files-are-permanent-gaps.md,
+// amended by decision 022):
+// a specific real file whose declared data is internally inconsistent in a
+// way no still-undiscovered inheritance or layout rule explains —
+// confirmed corrupt/malformed source data, not a decoder defect. The
+// 3-plane PCX sprites decision 018 first listed here decode since backlog
+// item 012 (.vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md).
+const corruptSourceFileGapName = "confirmed corrupt/inconsistent real source file"
 
 // acceptedCorpusGap identifies one specific, already-diagnosed real-file
 // decode failure by the real character folder structure it lives under
@@ -214,19 +213,7 @@ type acceptedCorpusGap struct {
 }
 
 var acceptedCorpusGaps = []acceptedCorpusGap{
-	{"DC Comics/Green Lantern/DCTemplate.sff", 9000, 11, pcx3PlaneGapName},
-	{"Marvel/Daredevil/DareDevil.sff", 9000, 11, pcx3PlaneGapName},
-	{"Marvel/Daredevil/DareDevil.sff", 7696, 1, pcx3PlaneGapName},
-	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 18, pcx3PlaneGapName},
-	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 19, pcx3PlaneGapName},
-	{"Pokemon/Snorlax/Snorlax.sff", 7000, 20, pcx3PlaneGapName},
-	{"Sailor Moon/Sailor Neptune/sailor_neptune.sff", 16780, 0, pcx3PlaneGapName},
-	{"Street Fighter/Omni (SF4)/sf4omni.sff", 3188, 21, pcx3PlaneGapName},
-
 	{"Dragon Ball/Yamcha/Yamcha.sff", 4000, 0, corruptSourceFileGapName},
-	{"Darkstalkers/Anita/backup/ANITA.sff", 200, 108, corruptSourceFileGapName},
-	{"Marvel/Doctor Strange/DoctorStrange.sff", 1314, 13, corruptSourceFileGapName},
-	{"Nintendo/Donkey Kong SD/common/sprites.sff", 2000, 20, corruptSourceFileGapName},
 }
 
 // matchAcceptedGap returns the gap name for a failure at relPath (a real
@@ -252,33 +239,33 @@ func TestMatchAcceptedGap(t *testing.T) {
 	}{
 		{
 			name:    "matches a known gap by its full corpus-relative path",
-			relPath: "Marvel/Daredevil/DareDevil.sff",
-			group:   9000, image: 11,
-			wantName: pcx3PlaneGapName, wantOK: true,
+			relPath: "Dragon Ball/Yamcha/Yamcha.sff",
+			group:   4000, image: 0,
+			wantName: corruptSourceFileGapName, wantOK: true,
 		},
 		{
 			name:    "matches when relPath carries extra leading corpus-root segments",
-			relPath: "DC/Marvel/Daredevil/DareDevil.sff",
-			group:   7696, image: 1,
-			wantName: pcx3PlaneGapName, wantOK: true,
+			relPath: "DC/Dragon Ball/Yamcha/Yamcha.sff",
+			group:   4000, image: 0,
+			wantName: corruptSourceFileGapName, wantOK: true,
 		},
 		{
 			name:    "does not match the right file with the wrong (group, image)",
-			relPath: "Marvel/Daredevil/DareDevil.sff",
+			relPath: "Dragon Ball/Yamcha/Yamcha.sff",
 			group:   1, image: 1,
 			wantOK: false,
 		},
 		{
 			name:    "does not match an unrelated file even sharing a group/image pair",
-			relPath: "Someone/Else/DareDevil.sff",
-			group:   9000, image: 12,
+			relPath: "Someone/Else/Yamcha.sff",
+			group:   4000, image: 0,
 			wantOK: false,
 		},
 		{
-			name:    "distinguishes the two named gaps for the same file",
+			name:    "does not match a sprite whose gap was resolved (Donkey Kong SD 2000/20 is a 3-plane sprite)",
 			relPath: "Nintendo/Donkey Kong SD/common/sprites.sff",
 			group:   2000, image: 20,
-			wantName: corruptSourceFileGapName, wantOK: true,
+			wantOK: false,
 		},
 	}
 

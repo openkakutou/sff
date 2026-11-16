@@ -119,6 +119,16 @@ func DecodeV1Palette(data []byte) (Palette, error) {
 // confirmed against real, unmodified .sff v1 files — see
 // .vibe/decisions/012-v1-palette-block-lives-inside-declared-length.md.
 //
+// A 3-plane (direct RGB) sprite owns no palette block (decision 022), but
+// this function does not detect that. With a declared Length of at least
+// V1PaletteBlockSize it returns the last V1PaletteBlockSize bytes of the
+// sprite's pixel data as a meaningless palette, without error (as Ikemen GO
+// reads the same tail bytes). A non-shared 3-plane sprite with a shorter
+// Length gets the usual "smaller than the 768-byte palette block" error. A
+// sprite inheriting from a 3-plane one gets whatever its source gets
+// (palette or error). Callers check PCXImage.BytesPerPixel (from ResolveV1Pixels)
+// first and ignore the palette when it is 3; ResolveSpritePixels does so.
+//
 // If override is non-nil, it is returned immediately instead — a caller-
 // supplied external palette (see DecodeExternalPalette) used in place of
 // the sprite's own, bypassing the table lookup entirely. See

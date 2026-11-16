@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Classic (v1) sheets containing truecolor sprites now load completely: those sprites appear in their real colors, with their solid background color made transparent, instead of making the whole sheet fail to load.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added

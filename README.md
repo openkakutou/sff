@@ -4,6 +4,7 @@ A read/write Go library for MUGEN/Ikemen GO sprite sheet (`.sff`) files — v1 a
 
 <!-- vibe:begin:features -->
 - Reading and writing `.sff` v1 sprite sheets (header, sprite table, PCX pixel data, sprite linking, palette sharing)
+- Reading v1 sheets that contain truecolor (24-bit) sprites, shown in their real colors with their solid background made transparent
 - Reading and writing `.sff` v2 sprite sheets (sprite/palette tables, raw/RLE8/LZ5/PNG pixel formats, sprite and palette linking)
 - Resolving a sprite's palette into actual on-screen colors, including recoloring with an external `.act` palette file
 - Editing a palette's colors, with out-of-range values rejected instead of silently corrupted, and saving the edits back into either `.sff` file version or exporting them as a standalone `.act` file

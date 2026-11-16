@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"image/color"
 	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -921,4 +923,81 @@ func colorsEqual(a, b []color.RGBA) bool {
 		}
 	}
 	return true
+}
+
+// A 3-plane sprite's palette is not detected (decision 022): ResolveV1Palette
+// keeps reading the trailing 768 declared bytes. These tests pin that
+// behaviour as it is, in both Length cases.
+
+func TestResolveV1Palette_ThreePlaneFixtureSprite_ReturnsTrailing768DeclaredBytesWithoutError(t *testing.T) {
+	// Fixture: one sprite, Offset 544, Length 1404 (>= 768).
+	raw, err := os.ReadFile("testdata/files/v1-pcx-3plane.sff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := ParseV1(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	if e := table.Sprites[0]; e.Offset != 544 || e.Length != 1404 {
+		t.Fatalf("fixture changed: Offset %d Length %d, want 544/1404", e.Offset, e.Length)
+	}
+	want, err := DecodeV1Palette(raw[544+1404-768 : 544+1404])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveV1Palette(table, bytes.NewReader(raw), 0, nil)
+	if err != nil {
+		t.Fatalf("ResolveV1Palette: unexpected error %v", err)
+	}
+	if got != want {
+		t.Fatalf("palette is not the trailing 768 declared bytes: got[0]=%v want[0]=%v", got[0], want[0])
+	}
+}
+
+func TestResolveV1Palette_ThreePlaneSpriteShorterThanPaletteBlock_ReturnsPaletteBlockError(t *testing.T) {
+	data := build3PlaneOwnerV1File(t, 200)
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	_, err = ResolveV1Palette(table, bytes.NewReader(data), 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "declared length 200 is smaller than the 768-byte palette block") {
+		t.Fatalf("got error %v, want the palette-block-too-small error", err)
+	}
+}
+
+func TestResolveV1Palette_SharedIndexedSpriteAfterThreePlaneOwner_InheritsOwnersTrailingBytes(t *testing.T) {
+	pcx := buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2)
+	pcx = append(pcx, 10, 20, 30, 40, 50, 60)
+	for len(pcx) < 800 {
+		pcx = append(pcx, byte(len(pcx)%251))
+	}
+	indexed := mustEncodePCX(t, &PCXImage{Width: 1, Height: 1, Pixels: []byte{0}})
+	data := serializeV1ForTest(t, true, []V1WriteSprite{
+		{Group: 0, Image: 0, SharedPalette: true, PixelData: pcx},
+		{Group: 0, Image: 1, SharedPalette: true, PixelData: indexed},
+	})
+	table, err := ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	data[table.Sprites[0].Offset-32+18] = 0 // owner: SharedPalette=false
+	table, err = ParseV1(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("ParseV1: %v", err)
+	}
+	want, err := DecodeV1Palette(pcx[len(pcx)-768:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveV1Palette(table, bytes.NewReader(data), 1, nil)
+	if err != nil {
+		t.Fatalf("ResolveV1Palette: %v", err)
+	}
+	if got != want {
+		t.Fatalf("inherited palette differs from owner's trailing 768 bytes: got[0]=%v want[0]=%v", got[0], want[0])
+	}
 }

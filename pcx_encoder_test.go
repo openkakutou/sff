@@ -2,6 +2,7 @@ package sff
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 )
 
@@ -168,5 +169,14 @@ func TestEncodePCX_NonPositiveDimensions_ReturnsError(t *testing.T) {
 		if _, err := EncodePCX(img); err == nil {
 			t.Errorf("expected an error for dimensions %dx%d, got nil", img.Width, img.Height)
 		}
+	}
+}
+
+func TestEncodePCX_ThreeBytesPerPixel_ReturnsExplicitError(t *testing.T) {
+	img := &PCXImage{Width: 1, Height: 1, BytesPerPixel: 3, Pixels: []byte{1, 2, 3}}
+
+	_, err := EncodePCX(img)
+	if err == nil || !strings.Contains(err.Error(), "3-plane encode not supported") {
+		t.Fatalf("got error %v, want one saying 3-plane encode is not supported", err)
 	}
 }

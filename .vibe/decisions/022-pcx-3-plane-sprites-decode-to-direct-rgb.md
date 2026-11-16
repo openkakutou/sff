@@ -1,0 +1,13 @@
+---
+date: 2026-11-16
+status: accepted
+---
+# 3-plane PCX v1 sprites decode to direct RGB, diverging from Ikemen GO
+
+**Context:** Backlog item 012 revisits the 3-plane half of decision `018`: 8 real sprites in 6 corpus files are 24-bit PCX (per scanline an R, a G and a B row, no 768-byte palette block although their per-sprite SharedPalette flag is 0). Ikemen GO's v1 reader (`src/image.go` `readPcxHeader`/`RlePcxDecode`) never reads the plane count and decodes them as indexed bytes, so they come out garbled; MUGEN's behaviour is unverified. Three more sprites (Donkey Kong SD 2000/20, Doctor Strange 1314/13, Anita 200/108) were previously misfiled as corrupt in decision `018` ("declared length smaller than the 768-byte palette block") and are 3-plane sprites too.
+
+**Decision:** `PCXImage` gains `BytesPerPixel` (1 indexed, 3 interleaved RGB; 0 means indexed for a hand-built image), echoing `V2Image`'s name only. `DecodePCX` accepts 1 or 3 planes; the v1 pixel read keeps the whole declared length for a 3-plane sprite (no palette block). `ResolveSpritePixels` returns their RGB directly: the palette and any override do not apply, and every pixel equal to the top-left pixel's colour is transparent (their backgrounds are a solid key colour, magenta or black). `EncodePCX` refuses 3-plane images. `ResolveV1Palette` is unchanged: on a 3-plane sprite (or one inheriting from it) it does not detect the shape: with Length >= 768 it still reads the last 768 pixel bytes as a meaningless palette without error, as Ikemen GO does, while a non-shared sprite with Length < 768 (e.g. Donkey Kong SD 2000/20) gets the existing "smaller than the 768-byte palette block" error, and an inheriting sprite gets whatever its source gets; consumers check `BytesPerPixel` first, and this is documented. This supersedes decision `018` for the 3-plane shape only (its confirmed-corrupt-file half stands), and amends decision `012`'s rule that Length includes the palette block when SharedPalette is false: not for a 3-plane sprite.
+
+**Reason:** The Product Owner chose real colours (MUST) over reproducing Ikemen GO's garbled output, and the top-left key (SHOULD), which clears 7 of 8 backgrounds and touches 8 of 307,200 pixels on the one full-frame illustration. Reusing the `V2Image` shape keeps one way of saying "direct colour" in the package.
+
+**Rejected alternatives:** Reproducing Ikemen GO's indexed reading (faithful but useless for display); keeping the gap; fully opaque output; a separate `RGB` field on `PCXImage` (two pixel fields, silent empty `Pixels`); a closed internal path keeping `PCXImage` indexed-only (public `ResolveV1Pixels` would refuse a sprite the rest of the library supports).

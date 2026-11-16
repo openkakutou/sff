@@ -1,5 +1,5 @@
 ---
-status: todo
+status: in_progress
 ---
 # Decode 3-Plane PCX Sprites
 

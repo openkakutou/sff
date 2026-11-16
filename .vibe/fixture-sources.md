@@ -114,7 +114,7 @@ full local corpus above: **562 files, 674,710 sprites**.
     per-axis check rejected. Fixed by making the check area-based — see
     `.vibe/decisions/016-sprite-dimension-limit-is-area-based-not-per-axis.md`.
 
-### Remaining 12 failures — permanent, named accepted gaps (backlog item 007)
+### Remaining 12 failures — named accepted gaps (backlog item 007), 11 since resolved (item 012)
 
 Registered individually in `corpus_compat_test.go`'s `acceptedCorpusGaps`
 (by real file path + group/image), not fixed — see
@@ -123,5 +123,14 @@ for the full reasoning:
 
 | Shape | Count | Files | Notes |
 |---|---|---|---|
-| `sff: pcx: unsupported color plane count 3, only 1 is supported` (`pcx3PlaneGapName`) | 8 | 6 files (`Green Lantern`, `Daredevil` ×2, `Donkey Kong SD` ×2, `Snorlax`, `Sailor Neptune`, `sf4omni`) | A 3-plane (24-bit RGB) PCX sprite — this decoder only supports the 1-plane (8-bit indexed) PCX MUGEN sprites normally use. Permanent scope cut, mirroring the v2 linked-sprite gap. |
-| `sff: v1 palette: sprite N: declared length M is smaller than the 768-byte palette block it must contain` (`SharedPalette: false`) and `sff: pcx: truncated RLE run at row 225: missing value byte` (`corruptSourceFileGapName`) | 4 | `Darkstalkers/Anita`, `Doctor Strange`, `Donkey Kong SD`, `Dragon Ball/Yamcha` | Each file's own declared layout is confirmed internally inconsistent (a `SharedPalette: false` sprite whose neighboring subheader position leaves genuinely too little room for its own mandatory palette block, or a PCX RLE stream that terminates mid-row) — real, individually-confirmed corrupt/malformed source data, not a decoder defect. |
+| ~~`sff: pcx: unsupported color plane count 3, only 1 is supported`~~ (`pcx3PlaneGapName`, removed) | 8 | 6 files (`Green Lantern`, `Daredevil` ×2, `Donkey Kong SD` ×2, `Snorlax`, `Sailor Neptune`, `sf4omni`) | **No longer a gap (backlog item 012):** a 3-plane (24-bit RGB) PCX sprite decodes to direct RGB, top-left pixel colour transparent — see `.vibe/decisions/022-pcx-3-plane-sprites-decode-to-direct-rgb.md` (supersedes decision 018 for this shape only). |
+| `sff: pcx: truncated RLE run at row 225: missing value byte` (`corruptSourceFileGapName`) | 1 | `Dragon Ball/Yamcha` | The PCX RLE stream terminates mid-row — real, individually-confirmed corrupt/malformed source data, not a decoder defect. Three sprites first filed here with the "declared length smaller than the 768-byte palette block" message were misdiagnosed 3-plane PCX sprites with no palette block, resolved by item 012: Donkey Kong SD 2000/20 (54x54), Doctor Strange 1314/13 (47x33), Anita 200/108 (1x1). |
+
+## `testdata/files/v1-pcx-3plane.sff` (backlog item 012)
+
+Trimmed by `testdata/gen` from the local corpus's
+`Nintendo/Donkey Kong SD/common/sprites.sff`, group 2000 image 18: a real
+52x52 3-plane (24-bit) PCX sprite, magenta (255,0,255) background, 1404
+bytes with no 768-byte palette block. `SRC_DIR` must contain that file
+under the name `dk-sd-v1.sff` (a symlink works). Expected pixel values in
+the tests were read once with an independent throwaway Python PCX decoder.
