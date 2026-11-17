@@ -4,4 +4,4 @@
 package sff
 
 // Version is the library version.
-const Version = "0.8.0"
+const Version = "0.8.1"
