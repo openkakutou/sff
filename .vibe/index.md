@@ -25,6 +25,8 @@
 - `cmd/wasm` is the one package gated by a Go build constraint (`//go:build js && wasm`) rather than by directory convention alone, keeping `syscall/js`-only code out of a normal host `go build ./...`/`go test ./...`; its own correctness is instead verified by a Node.js script (`smoke.mjs`) loading the built module the way a real browser would. The tagged-release workflow (`.github/workflows/release.yml`) gates publishing the built `sff.wasm`/`wasm_exec.js` pair on that same smoke test passing against the exact built artifact, not just a successful native build — see `.vibe/decisions/003-wasm-entrypoint-api-shape-and-release-smoke-gate.md`.
 - v1 PCX sprites decode as 1-plane indexed or 3-plane direct RGB (`PCXImage.BytesPerPixel` 1 or 3, decision `022`): a 3-plane sprite has no palette block, `ResolveSpritePixels` skips palette and override and keys the top-left colour as transparent; the corpus scan now leaves a single corrupt-file gap (Yamcha)
 
+- An external `.act` is accepted at 768 bytes, or at 772 bytes (Photoshop trailer, ignored as in Ikemen GO). Every other size stays an error rather than Ikemen GO's silent truncation or padding. See `.vibe/decisions/023`.
+
 ## Other context files
 - [`models.md`](models.md) — data models
 - [`glossary.md`](glossary.md) — ubiquitous language

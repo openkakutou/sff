@@ -551,6 +551,53 @@ func TestDecodeExternalPalette_TooLong_ReturnsError(t *testing.T) {
 	}
 }
 
+// TestDecodeExternalPalette_RealPhotoshopTrailerFile_DecodesLikeItsFirst768Bytes
+// uses a real 772-byte community .act (Photoshop's 4-byte trailer: color
+// count 0x0100, transparent index), which Ikemen GO loads by reading only
+// its first 768 bytes (src/image.go readActPalette).
+func TestDecodeExternalPalette_RealPhotoshopTrailerFile_DecodesLikeItsFirst768Bytes(t *testing.T) {
+	raw, err := os.ReadFile("testdata/files/eddie-photoshop-trailer.act")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) != 772 {
+		t.Fatalf("fixture is %d bytes, want 772", len(raw))
+	}
+
+	got, err := DecodeExternalPalette(raw)
+	if err != nil {
+		t.Fatalf("DecodeExternalPalette(772-byte .act): %v", err)
+	}
+
+	// Independently derived: the file's first triplet is index 255, its
+	// 256th (bytes 765..767) is index 0, forced transparent.
+	if want := (color.RGBA{R: raw[0], G: raw[1], B: raw[2], A: 255}); got[255] != want {
+		t.Errorf("index 255 = %v, want %v (first triplet)", got[255], want)
+	}
+	if want := (color.RGBA{R: raw[765], G: raw[766], B: raw[767], A: 0}); got[0] != want {
+		t.Errorf("index 0 = %v, want %v (256th triplet, transparent)", got[0], want)
+	}
+	first768, err := DecodeExternalPalette(raw[:768])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != first768 {
+		t.Error("772-byte decode differs from decoding its first 768 bytes")
+	}
+}
+
+func TestDecodeExternalPalette_SizesOtherThan768Or772_ReturnErrorNamingAcceptedSizes(t *testing.T) {
+	for _, n := range []int{770, 771, 773, 1024} {
+		_, err := DecodeExternalPalette(make([]byte, n))
+		if err == nil {
+			t.Fatalf("%d bytes: expected an error, got nil", n)
+		}
+		if !strings.Contains(err.Error(), "768") || !strings.Contains(err.Error(), "772") {
+			t.Errorf("%d bytes: error %q should name both accepted sizes", n, err)
+		}
+	}
+}
+
 func TestDecodeExternalPalette_Empty_ReturnsError(t *testing.T) {
 	_, err := DecodeExternalPalette(nil)
 	if err == nil {

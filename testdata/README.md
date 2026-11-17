@@ -88,3 +88,11 @@ See `.vibe/decisions/020-...md` for why these orders are what they are.
 using `ParseV2`'s current offset resolution, which does not yet understand
 on-demand addressing (see item 029's notes). This fixture may need
 regenerating once `ParseV2` is extended to support it.
+
+## `files/eddie-photoshop-trailer.act`
+
+An unmodified, real 772-byte `.act`: `Guilty Gear/eddie/eddie03.act` from the
+local corpus (see `.vibe/fixture-sources.md`). This is Photoshop's format: the
+768-byte palette, then a 4-byte trailer (`01 00 00 c8`: color count 256,
+transparent index 200). It is one of the 33 such files in the corpus, all of
+which decode (backlog item 017, `.vibe/decisions/023`).

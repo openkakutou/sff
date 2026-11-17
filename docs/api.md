@@ -37,7 +37,7 @@ Most consumers only need these two functions.
 | Function | Purpose |
 |---|---|
 | `DecodeV1Palette(data []byte) (Palette, error)` / `DecodeV2Palette(data []byte) (Palette, error)` | Decodes raw palette bytes into a resolved `Palette`. |
-| `DecodeExternalPalette(data []byte) (Palette, error)` | Decodes a standalone `.act` external palette file. |
+| `DecodeExternalPalette(data []byte) (Palette, error)` | Decodes a standalone `.act` external palette file: 768 bytes, or 772 bytes for a Photoshop-saved `.act`, whose 4-byte trailer is ignored (as Ikemen GO ignores it). Any other size is an error. |
 | `EncodeV1Palette(p Palette) []byte` | Encodes `p` back into a 768-byte v1 embedded palette block — the exact inverse of `DecodeV1Palette`. Alpha is ignored (v1 has no on-disk alpha channel). |
 | `EncodeV2Palette(p Palette, colorCount int) ([]byte, error)` | Encodes the first `colorCount` colors of `p` into v2 palette bank RGBA color data — the exact inverse of `DecodeV2Palette`. Errors if `colorCount` is outside `[0, 256]`. |
 | `EncodeExternalPalette(p Palette) []byte` | Encodes `p` into a standalone 768-byte `.act` file buffer — the exact inverse of `DecodeExternalPalette`. Alpha is ignored (an `.act` file has no on-disk alpha channel). |

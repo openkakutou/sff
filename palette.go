@@ -215,16 +215,22 @@ func EncodeV1Palette(p Palette) []byte {
 // concept (a standalone recolor file, not a sprite's own embedded palette).
 const externalPaletteSize = 768
 
+// photoshopActSize is a Photoshop-saved .act: the 768-byte palette followed
+// by a 4-byte trailer (color count, transparent index) that is ignored, as
+// Ikemen GO ignores it. See .vibe/decisions/023.
+const photoshopActSize = externalPaletteSize + 4
+
 // DecodeExternalPalette decodes an external MUGEN/Ikemen .act palette file
 // (256 RGB triplets, always opaque on disk) into a Palette, reproducing
 // convertExternalPaletteToRGBA.mjs's two quirks: the file stores its 256
 // triplets in reverse index order — the first triplet becomes palette index
 // 255, the last becomes index 0 — and only the resulting index 0 is forced
 // to fully transparent (alpha 0); every other entry stays opaque. data must
-// be exactly externalPaletteSize (768) bytes.
+// be externalPaletteSize (768) bytes, or photoshopActSize (772) bytes whose
+// 4-byte trailer is ignored.
 func DecodeExternalPalette(data []byte) (Palette, error) {
-	if len(data) != externalPaletteSize {
-		return Palette{}, fmt.Errorf("sff: external .act palette is %d bytes, want exactly %d", len(data), externalPaletteSize)
+	if len(data) != externalPaletteSize && len(data) != photoshopActSize {
+		return Palette{}, fmt.Errorf("sff: external .act palette is %d bytes, want %d (or %d with a Photoshop trailer)", len(data), externalPaletteSize, photoshopActSize)
 	}
 
 	var p Palette
