@@ -1,5 +1,5 @@
 ---
-status: todo
+status: done
 ---
 # Accept 772-byte Photoshop .act palettes
 
