@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-21
+
+### Added
+- `ResolveCharacterSpritePixels`: a character's sprite with its selected .act palette, as Ikemen GO draws it: in an SFF v1 sheet the .act replaces the first palette (sprite 0's and every sprite sharing it), sprites with their own palette keep theirs.
+
 ## [0.8.1] - 2026-11-17
 
 ### Fixed

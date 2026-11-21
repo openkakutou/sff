@@ -51,6 +51,50 @@ func ResolveSpritePixels(r io.ReaderAt, group, image int, override *Palette) ([]
 	return resolveSpritePixelsV1(r, group, image, override)
 }
 
+// ResolveCharacterSpritePixels is ResolveSpritePixels for a character's
+// sprite drawn with its selected .act palette, as Ikemen GO does
+// (char.go:4762-4800, commit 54d4148a): in an SFF v1 sheet the .act takes
+// the place of the first palette, so the sprites using it (sprite 0's, and
+// every sprite sharing it) take the .act's colours, while a sprite with its
+// own palette keeps it. A nil act draws the sheet's own palettes.
+//
+// shortcut: an SFF v2 sheet keeps its own palettes; Ikemen GO selects among
+// them by the palette number, which is its first by default.
+func ResolveCharacterSpritePixels(r io.ReaderAt, group, image int, act *Palette) ([]color.RGBA, int, int, error) {
+	isV2, err := detectVersion(r)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if isV2 {
+		return resolveSpritePixelsV2(r, group, image, nil)
+	}
+	table, err := ParseV1(r)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	i, ok := table.Index(group, image)
+	if !ok {
+		return nil, 0, 0, fmt.Errorf("sprite not found: no sprite at group %d, image %d", group, image)
+	}
+	var override *Palette
+	if act != nil && v1PaletteOwner(table, i) == 0 {
+		override = act
+	}
+	return resolveV1Sprite(table, r, i, override)
+}
+
+// v1PaletteOwner is the index of the sprite whose embedded palette sprite i
+// uses (ResolveV1Palette's chain).
+func v1PaletteOwner(table *V1SpriteTable, i int) int {
+	for {
+		src := v1PaletteSource(table, i)
+		if src == i {
+			return i
+		}
+		i = src
+	}
+}
+
 func resolveSpritePixelsV1(r io.ReaderAt, group, image int, override *Palette) ([]color.RGBA, int, int, error) {
 	table, err := ParseV1(r)
 	if err != nil {
@@ -60,7 +104,10 @@ func resolveSpritePixelsV1(r io.ReaderAt, group, image int, override *Palette) (
 	if !ok {
 		return nil, 0, 0, fmt.Errorf("sprite not found: no sprite at group %d, image %d", group, image)
 	}
+	return resolveV1Sprite(table, r, i, override)
+}
 
+func resolveV1Sprite(table *V1SpriteTable, r io.ReaderAt, i int, override *Palette) ([]color.RGBA, int, int, error) {
 	img, err := ResolveV1Pixels(table, r, i)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("sff: resolving sprite pixels: %w", err)
