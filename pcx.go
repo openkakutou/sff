@@ -99,35 +99,35 @@ func DecodePCX(data []byte) (*PCXImage, error) {
 
 	lineLen := bytesPerLine * bytesPerPixel
 	pixels := make([]byte, width*height*bytesPerPixel)
-	cursor := pcxHeaderSize
+	rle := data[pcxHeaderSize:]
+	if len(rle) == 0 {
+		return nil, errors.New("sff: pcx: no RLE data")
+	}
+	// next is Ikemen GO's RlePcxDecode read (image.go:1067-1096): past the
+	// end of the data it reads the last byte again, so a truncated sprite
+	// still decodes (Yamcha's 4000,0).
+	cursor := 0
+	next := func() byte {
+		b := rle[cursor]
+		if cursor < len(rle)-1 {
+			cursor++
+		}
+		return b
+	}
 	line := make([]byte, 0, lineLen)
 
 	for y := 0; y < height; y++ {
 		line = line[:0]
 		for len(line) < lineLen {
-			if cursor >= len(data) {
-				return nil, fmt.Errorf("sff: pcx: truncated RLE data at row %d: need %d more bytes", y, lineLen-len(line))
-			}
-			b := data[cursor]
-			cursor++
-
+			b := next()
+			count, value := 1, b
 			if b&0xC0 == 0xC0 {
-				count := int(b & 0x3F)
-				if cursor >= len(data) {
-					return nil, fmt.Errorf("sff: pcx: truncated RLE run at row %d: missing value byte", y)
-				}
-				value := data[cursor]
-				cursor++
-
-				remaining := lineLen - len(line)
-				if count > remaining {
-					return nil, fmt.Errorf("sff: pcx: RLE run at row %d overflows scanline: run of %d exceeds %d remaining bytes", y, count, remaining)
-				}
-				for i := 0; i < count; i++ {
-					line = append(line, value)
-				}
-			} else {
-				line = append(line, b)
+				count, value = int(b&0x3F), next()
+			}
+			// A run past the end of the scanline is cut there, as Ikemen GO
+			// does.
+			for i := 0; i < count && len(line) < lineLen; i++ {
+				line = append(line, value)
 			}
 		}
 		// Fast path: a 1-plane scanline is already the pixel row.

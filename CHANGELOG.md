@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-21
+
+### Fixed
+- PCX sprite data is decoded as Ikemen GO decodes it (RlePcxDecode): past the end of the data the last byte is read again, and a run past the end of a scanline is cut there, instead of failing the sprite (Yamcha's 4000,0).
+
 ## [0.9.0] - 2026-11-21
 
 ### Added

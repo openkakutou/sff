@@ -132,39 +132,46 @@ func TestDecodePCX_ErrorsOnInvalidImageBounds(t *testing.T) {
 	}
 }
 
-func TestDecodePCX_ErrorsOnTruncatedRunMissingValueByte(t *testing.T) {
+// Ikemen GO's RlePcxDecode (image.go:1067-1096) reads the last byte again
+// past the end of the data: a run marker without its value is its own value.
+func TestDecodePCX_TruncatedRunReadsTheLastByteAgain(t *testing.T) {
 	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 1, 2)
 	data = append(data, 0xC1) // run marker with no following value byte
 
-	_, err := DecodePCX(data)
-	if err == nil {
-		t.Fatal("expected an error for a run marker missing its value byte, got nil")
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "truncated") {
-		t.Fatalf("error %q does not mention truncation", err.Error())
+	if want := []byte{0xC1, 0xC1}; !bytesEqual(img.Pixels, want) {
+		t.Fatalf("Pixels = %v, want %v", img.Pixels, want)
 	}
 }
 
-func TestDecodePCX_ErrorsOnDataEndingMidScanline(t *testing.T) {
+// Data ending mid-scanline: the rest is the last byte (Yamcha's 4000,0).
+func TestDecodePCX_DataEndingMidScanlineRepeatsTheLastByte(t *testing.T) {
 	data := buildPCXHeader(1, 8, 0, 0, 3, 0, 1, 4)
 	data = append(data, 0x01, 0x02) // only 2 of the 4 declared bytes present
 
-	_, err := DecodePCX(data)
-	if err == nil {
-		t.Fatal("expected an error for data ending mid-scanline, got nil")
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "truncated") {
-		t.Fatalf("error %q does not mention truncation", err.Error())
+	if want := []byte{1, 2, 2, 2}; !bytesEqual(img.Pixels, want) {
+		t.Fatalf("Pixels = %v, want %v", img.Pixels, want)
 	}
 }
 
-func TestDecodePCX_ErrorsOnRunExceedingScanlineBounds(t *testing.T) {
+// A run past the end of the scanline is cut there (image.go:1086-1090).
+func TestDecodePCX_RunExceedingTheScanlineIsCut(t *testing.T) {
 	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 1, 2) // width=2, bytesPerLine=2
 	data = append(data, 0xC3, 0x05)                // run(3, ...) overflows the 2-byte line
 
-	_, err := DecodePCX(data)
-	if err == nil {
-		t.Fatal("expected an error for a run overflowing the scanline, got nil")
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []byte{5, 5}; !bytesEqual(img.Pixels, want) {
+		t.Fatalf("Pixels = %v, want %v", img.Pixels, want)
 	}
 }
 
@@ -260,12 +267,16 @@ func TestDecodePCX_ThreePlane_RunCrossingPlaneBoundaryFillsBothPlanes(t *testing
 	}
 }
 
-func TestDecodePCX_ThreePlane_TruncatedScanlineReturnsError(t *testing.T) {
+func TestDecodePCX_ThreePlane_TruncatedScanlineRepeatsTheLastByte(t *testing.T) {
 	data := buildPCXHeader(1, 8, 0, 0, 1, 0, 3, 2)
 	data = append(data, 1, 2, 3, 4, 5) // 5 of the 6 bytes the scanline needs
 
-	if _, err := DecodePCX(data); err == nil {
-		t.Fatal("expected an error for truncated 3-plane data, got nil")
+	img, err := DecodePCX(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []byte{1, 3, 5, 2, 4, 5}; !bytesEqual(img.Pixels, want) {
+		t.Fatalf("Pixels = %v, want %v", img.Pixels, want)
 	}
 }
 
