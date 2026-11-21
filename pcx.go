@@ -107,10 +107,13 @@ func DecodePCX(data []byte) (*PCXImage, error) {
 	// end of the data it reads the last byte again, so a truncated sprite
 	// still decodes (Yamcha's 4000,0).
 	cursor := 0
+	exhausted := false
 	next := func() byte {
 		b := rle[cursor]
 		if cursor < len(rle)-1 {
 			cursor++
+		} else {
+			exhausted = true
 		}
 		return b
 	}
@@ -123,6 +126,11 @@ func DecodePCX(data []byte) (*PCXImage, error) {
 			count, value := 1, b
 			if b&0xC0 == 0xC0 {
 				count, value = int(b&0x3F), next()
+			}
+			// Past the end, the last byte repeats forever: an empty run
+			// there would never fill the line (Ikemen GO hangs on it).
+			if count == 0 && exhausted {
+				return nil, errors.New("sff: pcx: RLE data ends on an empty run before the image is full")
 			}
 			// A run past the end of the scanline is cut there, as Ikemen GO
 			// does.

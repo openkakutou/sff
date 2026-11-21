@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-22
+
+### Fixed
+- Decoding a PCX sprite whose data ends on an empty run before the image is full returns an error instead of hanging (it froze `Load` and the WASM instance; introduced in 0.10.0).
+
 ## [0.10.0] - 2026-11-21
 
 ### Fixed
