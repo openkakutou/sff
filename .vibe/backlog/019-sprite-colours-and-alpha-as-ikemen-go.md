@@ -13,5 +13,7 @@ Found by the audit of 2026-11-21 (medium, not yet re-checked against Ikemen GO l
 🔒 MUST: Ikemen GO behaviour (roadmap decision `038`).
 
 ## Acceptance Criteria
-- [ ] Each rule above is checked against the Ikemen GO source and, where it differs, follows it, with a test per case
+- [ ] PNG pixels come back with straight alpha, and an SFF v2.0.0.0 palette gets Ikemen GO's forced alpha, each with a test
+- [ ] RLE5 joins the RLE8/LZ5 alpha rule, recorded in decision 014 (no real RLE5 file is known)
+- [ ] Palette banks: keep the clear error and record the divergence from Ikemen GO's truncation in a decision, as decision 023 does for `.act`
 - [ ] Docs and WASM output state the alpha that is actually returned
